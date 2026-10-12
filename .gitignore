@@ -1,0 +1,13 @@
+.DS_Store
+*.log
+node_modules/
+# Go
+src/pinboard-api/bin/
+# Student scratch
+pinboard-labs/
+# Local env files
+.env
+!src/.env.example
+# Build outputs
+*.tgz
+*.tar

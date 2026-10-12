@@ -1,0 +1,10 @@
+#!/bin/sh
+# Sourced by the nginx image entrypoint before templates are rendered.
+# Picks the DNS resolver nginx should use for the API name:
+#   - Docker networks: 127.0.0.11 (embedded DNS)
+#   - Kubernetes:      the cluster DNS Service IP from /etc/resolv.conf
+# Set DNS_RESOLVER explicitly to override.
+if [ -z "${DNS_RESOLVER:-}" ]; then
+  DNS_RESOLVER=$(awk '/^nameserver/ { print $2; exit }' /etc/resolv.conf)
+  export DNS_RESOLVER=${DNS_RESOLVER:-127.0.0.11}
+fi

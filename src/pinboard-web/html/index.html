@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="hdr" class="theme-emerald">
+  <div class="wrap">
+    <h1>📌 Pinboard</h1>
+    <p id="greeting">…</p>
+    <div class="meta">
+      <span>api <b id="version">?</b></span>
+      <span>served by <b id="hostname">?</b></span>
+      <span>store <b id="store">?</b></span>
+      <span>web <b id="webhost">?</b></span>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <form id="form">
+    <input id="author" placeholder="your name" maxlength="40">
+    <input id="text" placeholder="Pin a note…" maxlength="200" required autofocus>
+    <button>Pin it</button>
+  </form>
+  <p id="status" class="status"></p>
+  <ul id="notes"></ul>
+</main>
+<footer class="wrap">Zonoth • Containers &amp; Kubernetes course sample</footer>
+<script src="app.js"></script>
+</body>
+</html>

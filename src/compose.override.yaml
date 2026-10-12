@@ -1,0 +1,16 @@
+# Developer overrides — picked up automatically by `docker compose up`.
+# Adds live-reload of the web files with `docker compose watch`.
+services:
+  web:
+    develop:
+      watch:
+        - action: sync
+          path: ./pinboard-web/html
+          target: /usr/share/nginx/html
+        - action: rebuild
+          path: ./pinboard-web/Dockerfile
+  api:
+    develop:
+      watch:
+        - action: rebuild
+          path: ./pinboard-api

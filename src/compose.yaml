@@ -1,0 +1,58 @@
+# Pinboard — full stack with Docker Compose (reference solution for Lab 04).
+#   docker compose up -d --wait
+#   open http://localhost:8080
+name: pinboard
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pinboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pinboard-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-pinboard}
+    volumes:
+      - pinboard-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./pinboard-api
+      args:
+        APP_VERSION: "1.0"
+    image: pinboard-api:1.0
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-pinboard}:${POSTGRES_PASSWORD:-pinboard-secret}@db:5432/${POSTGRES_DB:-pinboard}
+      APP_THEME: ${APP_THEME:-emerald}
+      APP_GREETING: ${APP_GREETING:-Welcome to Pinboard (Compose)}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # distroless has no shell/curl — Compose can still probe via the web
+      # container; here we rely on the API's own retry + restart policy.
+      disable: true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped
+
+  web:
+    build: ./pinboard-web
+    image: pinboard-web:1.0
+    environment:
+      API_URL: http://api:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pinboard-data:

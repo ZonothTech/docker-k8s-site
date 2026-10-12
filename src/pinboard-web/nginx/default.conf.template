@@ -1,0 +1,29 @@
+# Rendered by the official nginx image's entrypoint: every ${VAR} is replaced
+# with the container's environment (envsubst) and written to
+# /etc/nginx/conf.d/default.conf before nginx starts.
+server {
+    listen       8080;
+    server_name  _;
+
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Everything under /api/ is proxied to the API. API_URL is injected at
+    # start-up, e.g. http://api:8080 (Compose) or http://pinboard-api:8080 (Kubernetes).
+    location /api/ {
+        resolver ${DNS_RESOLVER} valid=10s ipv6=off;
+        set $upstream ${API_URL};
+        proxy_pass $upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 10s;
+    }
+
+    location = /healthz { access_log off; return 200 "ok\n"; add_header Content-Type text/plain; }
+}
