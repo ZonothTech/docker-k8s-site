@@ -90,6 +90,10 @@ Status: Image is up to date for postgres@sha256:1f2c5d...
 
 Nothing was downloaded — you already have exactly those bytes.
 
+> **Note.** On a course lab VM the image is already cached, so even the first
+> `docker pull` prints `Status: Image is up to date for postgres:17-alpine` instead of the
+> `Pull complete` lines. Same result: the image is on your machine.
+
 > **Note.** Your digest will be different from the one printed above; images are
 > rebuilt regularly. Always read yours from `docker image inspect`, never copy one
 > out of a lab sheet.
@@ -137,8 +141,12 @@ A container's logs are simply whatever PID 1 wrote to stdout/stderr. Docker capt
 them for you — no log file to find, no `journalctl`.
 
 ```bash
-docker logs pinboard-db | tail -12
+docker logs pinboard-db 2>&1 | tail -12
 ```
+
+`2>&1` matters here: `docker logs` gives you the container's **stderr on your stderr**,
+and Postgres writes most of its log lines there. Without it, `tail` only sees half the
+log and the other half is printed around it, out of order.
 
 ```text
 PostgreSQL init process complete; ready for start up.
@@ -174,7 +182,7 @@ pinboard=#
 ```
 
 At the `pinboard=#` prompt, create the table Pinboard uses. This is the same DDL as
-`~/docker-kubernetes-training/src/db/init.sql`):
+`~/docker-kubernetes-training/src/db/init.sql`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS notes (
@@ -450,7 +458,7 @@ curl -s http://localhost:8080
 Watch the access log you just generated, then stop and remove the container:
 
 ```bash
-docker logs --tail 3 web-demo
+docker logs --tail 2 web-demo
 docker stop web-demo
 docker rm web-demo
 ```

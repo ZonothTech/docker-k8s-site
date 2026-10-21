@@ -294,7 +294,7 @@ docker run -d --name pinboard-db --network pinboard-net \
   -e POSTGRES_USER=pinboard -e POSTGRES_PASSWORD=pinboard-secret -e POSTGRES_DB=pinboard \
   postgres:17-alpine
 until docker exec pinboard-db pg_isready -U pinboard -d pinboard -q; do sleep 1; done
-docker logs pinboard-db | grep -E 'skipping initialization|ready to accept'
+docker logs pinboard-db 2>&1 | grep -E 'skipping initialization|ready to accept'
 ```
 
 ```text
