@@ -531,11 +531,14 @@ deployment "pinboard-api" successfully rolled out
 ```
 
 That one goes through, because `20-api-deployment.yaml` has no `FAIL_READY_AFTER` — healthy
-Pods pass `/readyz` and the rollout proceeds one Pod at a time. To see the *blocking*
-behaviour, add the readiness probe back to `20-api-deployment-noready.yaml` while keeping
-`FAIL_READY_AFTER: "15"` and apply that: the new Pods flip to `0/1` after 15 seconds, the
-rollout stalls at "1 out of 3 new replicas have been updated", and the old Pods keep
-serving until you `rollout undo`.
+Pods pass `/readyz` and the rollout proceeds one Pod at a time.
+
+**Optional (if you have time): watch readiness block a release.** Add the readiness probe
+back to `20-api-deployment-noready.yaml`, change `FAIL_READY_AFTER` to `"1"` (the Pods are
+never ready) and apply it: the first new Pod stays `0/1`, the rollout stalls at "1 out of 3
+new replicas have been updated", and the old Pods keep serving. (With `"15"` the rollout
+would still finish — each new Pod passes its first probes within seconds and only drops to
+`0/1`, out of rotation, after 15 s. A probe judges *now*, not the future.)
 
 ```text
 NAME                            READY   STATUS    RESTARTS   AGE
@@ -692,6 +695,10 @@ spec:
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
   jobTemplate:
+    metadata:
+      labels:                    # copied onto every Job the CronJob creates
+        app.kubernetes.io/name: pinboard-heartbeat
+        app.kubernetes.io/part-of: pinboard
     spec:
       backoffLimit: 1
       ttlSecondsAfterFinished: 120

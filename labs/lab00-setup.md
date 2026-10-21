@@ -22,7 +22,7 @@
 
 - Get a Linux lab machine ready for all ten sessions: Docker Engine 28+, kubectl, kind, helm.
 - Run Docker as your normal user, without `sudo`.
-- Clone the course repository so every lab can reference `~/docker-k8s-site/src/...`.
+- Clone the course repository so every lab can reference `~/docker-kubernetes-training/src/...`.
 - Know the one command that re-runs the whole install (`labs/setup.sh`) if your machine is rebuilt.
 - Verify the toolchain with a single block of commands, so Session 01 starts with everyone working.
 
@@ -37,11 +37,32 @@
   instructor **before** Session 01 — there is an offline image bundle.
 - About 20 minutes, and a coffee while apt does its thing.
 
+> **Continuity.** This is where the Pinboard project starts. Nothing is built yet:
+> this lab only prepares the machine and puts the course sources on disk at
+> `~/docker-kubernetes-training`. From Lab 01 onwards you build the Pinboard
+> application — database, API and web — one layer at a time, and every later lab
+> assumes the tools installed here.
+
 ## Guide
 
 ### Step 01: Check the lab machine
 
-Grant access to your lab machine and log in. The first thing to do is check that it meets the
+> **Did you receive an Azure lab VM from the instructor?** Then everything in this
+> lab is already installed. Connect with the SSH line you were sent
+> (`ssh student@<prefix>-<you>.westeurope.cloudapp.azure.com` + password), read the
+> login banner — it must say `status : READY` — and jump straight to
+> [Step 02](#step-02-clone-the-course-repository) to confirm the repo is there, then
+> [Step 10](#step-10-verify-everything). Two things differ on a remote VM:
+>
+> - Wherever a lab says "open <http://localhost:8080>", either forward the port when
+>   you connect — `ssh -L 8080:localhost:8080 -L 80:localhost:80 student@<host>` — and
+>   open it on your laptop, or use the VM's public name directly:
+>   `http://<prefix>-<you>.westeurope.cloudapp.azure.com:8080` (port 80 works from Lab 07 on).
+> - The VM shuts down every evening at 21:00 (Lisbon). Ask the instructor to start it
+>   if you want to work late.
+>
+> If the banner says `RUNNING: …`, wait a few minutes; if it says `FAILED: …`, tell the
+> instructor (they can re-run `sudo /usr/local/sbin/lab-setup.sh`).
 
 Confirm the distribution and the architecture. Every command in this course is
 Linux/bash; the architecture matters because kind and k9s are downloaded as
@@ -124,18 +145,18 @@ bash ~/docker-kubernetes-training/labs/setup.sh
     distribution : Ubuntu 24.04.3 LTS  (ubuntu/noble)
     architecture : amd64
     user         : student
-    options      : k9s=yes vscode=no kubectl=v1.33
+    options      : k9s=yes vscode=no kubectl=v1.37 kind=v0.33.0 helm=4
 
 ==> 1/7 Base packages (git, curl, jq, …)
 ==> 2/7 Docker Engine
     adding Docker's GPG key
     writing /etc/apt/sources.list.d/docker.list
     adding student to the 'docker' group
-==> 3/7 kubectl (v1.33 stable channel)
-==> 4/7 kind
-    installing kind v0.29.0 (linux/amd64)
-==> 5/7 helm
-    running the official get-helm-3 script
+==> 3/7 kubectl (v1.37 stable channel)
+==> 4/7 kind v0.33.0
+    installing kind v0.33.0 (linux/amd64)
+==> 5/7 helm 4
+    running the official get-helm-4 script
 ==> 6/7 k9s (optional)
     installing k9s v0.50.9 (Linux_x86_64)
 ==> 7/7 Visual Studio Code (optional)
@@ -145,10 +166,10 @@ bash ~/docker-kubernetes-training/labs/setup.sh
 Docker version 28.3.2, build 578ccf6
 Docker Compose version v2.39.1
 github.com/docker/buildx v0.26.1
-  gitVersion: v1.33.3
-  kustomizeVersion: v5.6.0
-kind v0.29.0 go1.24.5 linux/amd64
-v3.18.4+g8d3d1cb
+  gitVersion: v1.37.1
+  kustomizeVersion: v5.8.1
+kind v0.33.0 go1.26.7 linux/amd64
+v4.3.1+gc0d08d0
 git version 2.43.0
 
 ==> Done
@@ -260,16 +281,16 @@ your shell has not picked up the new group: run `newgrp docker`, or log out and 
 ### Step 06: Install kubectl
 
 `kubectl` comes from the community package host `pkgs.k8s.io`, which is versioned
-per **minor** release — you subscribe to a channel, here `v1.33` (the version our
+per **minor** release — you subscribe to a channel, here `v1.37` (the version our
 kind cluster runs from Session 05 on). Keep the client within one minor version of
 the cluster.
 
 ```bash
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key \
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.37/deb/Release.key \
   | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 sudo chmod a+r /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /' \
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.37/deb/ /' \
   | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
 
 sudo apt-get update
@@ -281,8 +302,8 @@ kubectl version --client
 ```
 
 ```text
-Client Version: v1.33.3
-Kustomize Version: v5.6.0
+Client Version: v1.37.1
+Kustomize Version: v5.8.1
 ```
 
 > **Note.** There is no cluster yet, so plain `kubectl version` will end with
@@ -292,10 +313,12 @@ Kustomize Version: v5.6.0
 
 kind (**K**ubernetes **in** **D**ocker) runs a real Kubernetes cluster inside Docker
 containers — one container per node. It is distributed as a single static binary
-from GitHub Releases, so we fetch the latest release for your architecture.
+from GitHub Releases. We pin the release: each kind version runs a specific Kubernetes
+version by default (v0.33.0 → Kubernetes 1.37), and kubectl must stay within one minor
+version of it.
 
 ```bash
-KIND_VERSION=$(curl -fsSL https://api.github.com/repos/kubernetes-sigs/kind/releases/latest | jq -r .tag_name)
+KIND_VERSION=v0.33.0
 echo "installing kind ${KIND_VERSION} for linux/$(dpkg --print-architecture)"
 curl -fsSLo /tmp/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-$(dpkg --print-architecture)"
 sudo install -m 0755 /tmp/kind /usr/local/bin/kind && rm /tmp/kind
@@ -303,8 +326,8 @@ kind version
 ```
 
 ```text
-installing kind v0.29.0 for linux/amd64
-kind v0.29.0 go1.24.5 linux/amd64
+installing kind v0.33.0 for linux/amd64
+kind v0.33.0 go1.26.7 linux/amd64
 ```
 
 Do **not** create a cluster yet — Lab 05 does that with `labs/kind-config.yaml`,
@@ -312,20 +335,20 @@ which adds the port mappings the Ingress lab needs.
 
 ### Step 08: Install helm (and k9s)
 
-Helm is used in Session 07 (installing ingress-nginx) and Session 10 (packaging).
+Helm is used in Session 10 (installing a chart and packaging Pinboard).
 Its official installer script picks the right binary for your architecture.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | sudo bash
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | sudo bash
 helm version --short
 ```
 
 ```text
-Downloading https://get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz
+Downloading https://get.helm.sh/helm-v4.3.1-linux-amd64.tar.gz
 Verifying checksum... Done.
 Preparing to install helm into /usr/local/bin
 helm installed into /usr/local/bin/helm
-v3.18.4+g8d3d1cb
+v4.3.1+gc0d08d0
 ```
 
 **k9s (optional but recommended)** — a terminal UI for Kubernetes. We use it in
@@ -401,10 +424,10 @@ docker info --format 'Server {{.ServerVersion}} · runtime {{.DefaultRuntime}} �
 Docker version 28.3.2, build 578ccf6
 Docker Compose version v2.39.1
 github.com/docker/buildx v0.26.1 fa0e0e5b1d2b3c9e0f2a1e0b0f9a2f36f5f0b1a2
-Client Version: v1.33.3
-Kustomize Version: v5.6.0
-kind v0.29.0 go1.24.5 linux/amd64
-v3.18.4+g8d3d1cb
+Client Version: v1.37.1
+Kustomize Version: v5.8.1
+kind v0.33.0 go1.26.7 linux/amd64
+v4.3.1+gc0d08d0
 git version 2.43.0
 
 Hello from Docker!
@@ -469,7 +492,7 @@ the images you build as root are invisible to your user later — don't mix the 
 **What you have now**
 
 - Docker Engine 28+ with the Buildx and Compose v2 plugins, usable without `sudo`.
-- kubectl v1.33, kind, and helm 3 on your `PATH` (plus k9s and VS Code if you took
+- kubectl v1.37, kind v0.33 (Kubernetes 1.37), and helm 4 on your `PATH` (plus k9s and VS Code if you took
   the optional steps).
 - The course repository at `~/docker-kubernetes-training`, containing the Pinboard
   sources (`src/`), all labs (`labs/`) and the decks (`decks/`).

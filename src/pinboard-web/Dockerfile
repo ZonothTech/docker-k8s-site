@@ -13,7 +13,7 @@ ENV API_URL=http://api:8080 \
 
 RUN rm /etc/nginx/conf.d/default.conf
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
-COPY nginx/10-resolver.envsh /docker-entrypoint.d/10-resolver.envsh
+COPY --chmod=0755 nginx/10-resolver.envsh /docker-entrypoint.d/10-resolver.envsh
 COPY html/ /usr/share/nginx/html/
 
 # Run as the unprivileged nginx user: listen on 8080 (not 80) and make the

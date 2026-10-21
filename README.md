@@ -9,7 +9,7 @@
 ![Duration](https://img.shields.io/badge/duration-20h-3ce8a6?style=flat-square&labelColor=12242a)
 ![Sessions](https://img.shields.io/badge/sessions-10%20%C3%97%202h-3ce8a6?style=flat-square&labelColor=12242a)
 ![Docker](https://img.shields.io/badge/Docker-Engine%2028%2B%20%2B%20Compose%20v2-12a85c?style=flat-square&labelColor=12242a)
-![Kubernetes](https://img.shields.io/badge/Kubernetes-1.33%2B%20on%20kind-12a85c?style=flat-square&labelColor=12242a)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-1.37%20on%20kind-12a85c?style=flat-square&labelColor=12242a)
 ![Level](https://img.shields.io/badge/level-beginner%20%E2%86%92%20practitioner-12a85c?style=flat-square&labelColor=12242a)
 
 [**Setup guide**](./labs/lab00-setup.md) · [**Curriculum**](#curriculum) · [**Labs**](#labs) · [**Slides (PDF)**](#slides) · [**Sample app**](./src/README.md)

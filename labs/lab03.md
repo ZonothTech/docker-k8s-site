@@ -260,7 +260,7 @@ Address:	192.168.1.1:53
 ```
 
 <details>
-<summary><strong>Check yourself:</strong> <code>curl http://pinboard-api:8080/api/info</code> works from busybox but fails from your host shell. Why?</summary>
+<summary><strong>Check yourself:</strong> <code>wget http://pinboard-api:8080/api/info</code> works from busybox, but <code>curl http://pinboard-api:8080/api/info</code> fails from your host shell. Why?</summary>
 
 The name `pinboard-api` only exists in the DNS of the `pinboard-net` network, and the
 container's IP (`172.19.0.3`) is only routable from that network's namespace. Your
@@ -311,28 +311,20 @@ curl -s http://localhost:8080/api/notes | jq -c '.[]'
 ```
 
 ```text
-{"error":"store unavailable"}
-```
-
-> **Note.** Not a bug — a lesson. The API is still holding TCP connections to a
-> container that no longer exists (the new one has a new IP). Its connection pool
-> has to be rebuilt, and nothing in Docker does that for you. Restart the API:
-
-```bash
-docker restart pinboard-api
-sleep 2
-curl -s http://localhost:8080/api/notes | jq -c '.[]'
-```
-
-```text
-pinboard-api
 {"id":2,"text":"three containers, one network","author":"ana","createdAt":"2026-08-20T11:07:44.512843Z"}
 {"id":1,"text":"hello from the browser","author":"me","createdAt":"2026-08-20T11:06:58.104221Z"}
 ```
 
-Both notes are back, from the volume. Remember this moment: "a dependency was
-replaced and its clients had to be restarted, by a human" is precisely the class of
-work Kubernetes automates (Services, endpoints, readiness probes, restarts).
+Both notes are back, from the volume — and you did not touch the API. Its connection
+pool noticed the old connections were dead and reconnected to **`pinboard-db` by name**:
+the new container may even have a new IP, and nobody had to care.
+
+> **Note.** If the first `curl` instead answers `{"error":"store unavailable"}` (or
+> hangs for a few seconds), the pool was still holding a connection to the container
+> that no longer exists. Repeat the `curl`; if it keeps failing, restart the client
+> by hand with `docker restart pinboard-api`. Remember that feeling: "a dependency was
+> replaced and its clients had to be checked, by a human" is precisely the class of work
+> Kubernetes automates (Services, endpoints, readiness probes, restarts).
 
 <details>
 <summary><strong>Check yourself:</strong> what exactly made the difference between Lab 01 and now?</summary>
@@ -416,9 +408,9 @@ Create `Dockerfile.shell`:
 FROM alpine:3.22
 COPY app.sh /app.sh
 RUN chmod +x /app.sh
-# SHELL form: Docker runs  /bin/sh -c 'echo starting…; /app.sh'
+# SHELL form: Docker runs  /bin/sh -c 'echo starting…; /app.sh; echo …'
 # → PID 1 is sh; app.sh is a child; sh does not forward SIGTERM to it.
-CMD echo "starting…"; /app.sh
+CMD echo "starting…"; /app.sh; echo "app.sh has exited"
 ```
 
 Create `Dockerfile.exec`:
@@ -466,21 +458,23 @@ docker logs sig-exec;  docker inspect sig-exec  --format 'exit={{.State.ExitCode
 
 ```text
 starting…
-up as PID 8 — waiting for signals
+up as PID 7 — waiting for signals
 exit=137
 up as PID 1 — waiting for signals
 SIGTERM received — shutting down cleanly
 exit=0
 ```
 
-The shell-form container never saw SIGTERM (`PID 8`, no trap message) and was
+The shell-form script never saw SIGTERM (`PID 7`, no trap message) and was
 **SIGKILLed** after the grace period: exit `137` = 128 + 9. The exec-form container
 was PID 1, ran its cleanup, and exited `0`.
 
-> **Note.** Why the `echo "starting…";` in the shell form? Without it, busybox's `sh`
-> optimises `sh -c '/app.sh'` into an `exec` and the problem disappears — which is
-> why this bug is so slippery in real life. Add any second command, pipe or
-> expansion and the shell stays around as PID 1 forever after.
+> **Note.** Why the trailing `echo "app.sh has exited"` in the shell form? Busybox's
+> `sh` `exec`s the *last* command of `sh -c '…'` (bash does the same for a single
+> command), so `CMD echo "starting…"; /app.sh` would quietly turn `/app.sh` into PID 1
+> and the problem would disappear — which is why this bug is so slippery in real life.
+> As soon as anything has to run *after* your program (a second command, a pipe, an
+> `&&`, a wrapper script that does not `exec`), the shell stays around as PID 1.
 
 This is why the Pinboard API's Dockerfile ends with
 `ENTRYPOINT ["/pinboard-api"]`. Watch it behave:
@@ -548,21 +542,25 @@ docker inspect pinboard-api \
 memory=33554432 restart=unless-stopped oomkilled=false
 ```
 
-Now test the restart policy the rude way — SIGKILL the process, as if it had
-segfaulted:
+Now test the restart policy the rude way — SIGKILL the process from the host, as if it
+had crashed on its own:
 
 ```bash
-docker kill -s KILL pinboard-api
+sudo kill -9 "$(docker inspect --format '{{.State.Pid}}' pinboard-api)"
 sleep 3
 docker ps --filter name=pinboard-api --format '{{.Names}} · {{.Status}}'
 docker inspect pinboard-api --format 'restarts={{.RestartCount}} exit={{.State.ExitCode}} status={{.State.Status}}'
 ```
 
 ```text
-pinboard-api
 pinboard-api · Up 2 seconds
 restarts=1 exit=0 status=running
 ```
+
+> **Note.** Why not `docker kill`? Docker treats `docker stop` *and* `docker kill` as a
+> deliberate, manual stop, and a restart policy never undoes a manual stop — the
+> container would simply stay `Exited (137)`. `.State.Pid` is the API's PID as seen from
+> the host; killing it there is indistinguishable from a real crash.
 
 Docker restarted it automatically. `unless-stopped` means "always restart, unless a
 human ran `docker stop`" — so a reboot brings your stack back, but a deliberate stop
@@ -595,6 +593,9 @@ healthy after 5 checks
 > good answer to "why not just use Compose in production?".
 
 ### Step 10: Bind-mount the web folder for live editing
+
+> **Optional** — skip this step if you are past ~35 minutes; you saw it in Demo 2 and
+> Lab 04 does live editing again with `docker compose watch`.
 
 A **bind mount** maps a host directory into the container: no copy, no rebuild, edits
 are visible instantly. Perfect for developing the static front-end, wrong for
@@ -656,7 +657,7 @@ docker rm -f pinboard-web-dev
 
    ```bash
    docker run --rm \
-     --mount type=volume,src=pinboard-data,dst=/data:ro \
+     --mount type=volume,src=pinboard-data,dst=/data,ro \
      --mount type=bind,src=$PWD,dst=/backup \
      alpine:3.22 tar czf /backup/pinboard-data.tgz -C /data .
    ls -lh pinboard-data.tgz
@@ -665,10 +666,19 @@ docker rm -f pinboard-web-dev
    For a database, do it properly with `docker exec pinboard-db pg_dump -U pinboard pinboard > dump.sql`
    — a file-level copy of a *running* Postgres is not a consistent backup.
 
-2. **Force an OOM kill.** Re-run the API with `--memory=8m` and watch it die:
-   `docker inspect pinboard-api --format '{{.State.OOMKilled}} {{.State.ExitCode}}'`
-   should report `true 137`. In Session 09 you will meet the same event as
-   `OOMKilled` in `kubectl describe pod`.
+2. **Force an OOM kill.** The Go API is too frugal to make the point (it idles at a few
+   MiB and survives even `--memory=6m`, Docker's minimum), so use a deliberate memory hog —
+   `tail` buffers `/dev/zero` forever, looking for a newline:
+
+   ```bash
+   docker run -d --name hog --memory=32m --memory-swap=32m busybox:1.37 tail /dev/zero
+   sleep 3
+   docker inspect hog --format '{{.State.OOMKilled}} {{.State.ExitCode}}'
+   docker rm hog
+   ```
+
+   It reports `true 137`. In Session 09 you will meet the same event as `OOMKilled` in
+   `kubectl describe pod`.
 
 3. **Count the flags.** Write down every flag you typed in Steps 02–09 to bring the
    stack up. Then look at `~/docker-kubernetes-training/src/compose.yaml` — the same

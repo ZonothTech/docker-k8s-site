@@ -88,6 +88,10 @@ kubectl apply -f 00-namespace.yaml
 namespace/pinboard configured
 ```
 
+(You may also see a `Warning: resource namespaces/pinboard is missing the
+kubectl.kubernetes.io/last-applied-configuration annotation` — expected for an object first
+made with `kubectl create`; `kubectl apply` adds the annotation itself. Harmless.)
+
 "configured", not "created" — applying a manifest for an object that already exists simply
 adds the labels. From here on `kubectl apply -f .` in this folder builds Pinboard from
 nothing, in filename order, which is why the files are numbered.
@@ -297,16 +301,32 @@ kubectl scale deployment/pinboard-api --replicas=5
 The watch reacts within a second or two:
 
 ```text
-NAME                 ADDRESSTYPE   PORTS   ENDPOINTS                                              AGE
-pinboard-api-x7k2b   IPv4          8080    10.244.1.7,10.244.2.5,10.244.1.8                       4m
-pinboard-api-x7k2b   IPv4          8080    10.244.1.7,10.244.2.5,10.244.1.8                       4m
-pinboard-api-x7k2b   IPv4          8080    10.244.1.7,10.244.2.5,10.244.1.8,10.244.2.6            4m
-pinboard-api-x7k2b   IPv4          8080    10.244.1.7,10.244.2.5,10.244.1.8,10.244.2.6,10.244.1.9 4m
+NAME                 ADDRESSTYPE   PORTS   ENDPOINTS                                      AGE
+pinboard-api-x7k2b   IPv4          8080    10.244.1.7,10.244.2.5,10.244.1.8               4m
+pinboard-api-x7k2b   IPv4          8080    10.244.1.7,10.244.2.5,10.244.1.8 + 1 more...   4m
+pinboard-api-x7k2b   IPv4          8080    10.244.1.7,10.244.2.5,10.244.1.8 + 2 more...   4m
 ```
 
-The new Pods appear in the list only once they pass the readiness probe — you can see the
-lag between `kubectl get pods` showing `Running` and the address arriving here. Run the
-`wget` loop in the debug Pod again and you will hit five hostnames.
+The `ENDPOINTS` column shows at most three addresses, then `+ N more...`. A new Pod is
+added to the slice as soon as it has an IP, but marked **not ready** until its readiness
+probe passes — and kube-proxy only sends traffic to ready endpoints. See the condition
+per address:
+
+```bash
+kubectl get endpointslices -l kubernetes.io/service-name=pinboard-api \
+  -o jsonpath='{range .items[*].endpoints[*]}{.addresses[0]}{"  ready="}{.conditions.ready}{"\n"}{end}'
+```
+
+```text
+10.244.1.7  ready=true
+10.244.2.5  ready=true
+10.244.1.8  ready=true
+10.244.2.6  ready=true
+10.244.1.9  ready=true
+```
+
+Run it straight after a scale-up and you may catch a `ready=false`. Run the `wget` loop in
+the debug Pod again and you will hit five hostnames.
 
 Scale back down and watch the addresses leave:
 
@@ -439,6 +459,9 @@ Stop the port-forward with `Ctrl-C`.
 
 ### Step 06: NodePort, and why it disappoints on kind
 
+> **Optional.** If you are short on time, skip to Step 07 — the instructor demo showed
+> this, and nothing later depends on it.
+
 A ClusterIP is only reachable inside the cluster. `NodePort` opens the same Service on a
 high port (30000–32767 by default) on **every node**:
 
@@ -465,7 +488,8 @@ curl: (7) Failed to connect to localhost port 31572 after 0 ms: Could not connec
 
 Nothing is wrong with the Service. The "nodes" are Docker containers, and only the ports
 listed in `extraPortMappings` (80 and 443) are published to your laptop. Port 31572 is open
-on the node containers' own addresses. Prove it from inside the cluster:
+on the node containers' own addresses. Prove it from inside the cluster (use one of *your*
+node IPs and *your* port):
 
 ```bash
 kubectl get nodes -o wide | awk '{print $1, $6}'
@@ -564,6 +588,11 @@ Pods are Jobs that generated the admission webhook's TLS certificate.
 > ports 80/443 on it. Those are the ports `kind-config.yaml` mapped to your laptop, which
 > is the whole trick that makes `http://localhost` work.
 
+> **Note.** The ingress-nginx project was retired in March 2026: the manifests stay
+> available, but there are no more releases or security fixes. That is fine for learning
+> Ingress on a laptop; on a real platform you would pick a maintained controller or the
+> Gateway API (see the Stretch goal).
+
 ### Step 08: One Ingress for the whole app
 
 Create `40-ingress.yaml`:
@@ -628,7 +657,7 @@ curl -si localhost/ | head -5
 HTTP/1.1 200 OK
 Date: Mon, 04 May 2026 12:31:08 GMT
 Content-Type: text/html
-Content-Length: 1043
+Content-Length: 992
 Connection: keep-alive
 ```
 
@@ -641,8 +670,8 @@ kubectl logs -n ingress-nginx deploy/ingress-nginx-controller --tail=2
 ```
 
 ```text
-192.168.65.1 - - [04/May/2026:12:31:08 +0000] "GET /api/info HTTP/1.1" 200 168 "-" "curl/8.5.0" 92 0.002 [pinboard-pinboard-api-http] [] 10.244.1.7:8080 168 0.002 200 3f1c...
-192.168.65.1 - - [04/May/2026:12:31:12 +0000] "GET / HTTP/1.1" 200 1043 "-" "curl/8.5.0" 88 0.001 [pinboard-pinboard-web-http] [] 10.244.2.9:8080 1043 0.001 200 8b7e...
+172.18.0.1 - - [04/May/2026:12:31:08 +0000] "GET /api/info HTTP/1.1" 200 168 "-" "curl/8.5.0" 92 0.002 [pinboard-pinboard-api-http] [] 10.244.1.7:8080 168 0.002 200 3f1c...
+172.18.0.1 - - [04/May/2026:12:31:12 +0000] "GET / HTTP/1.1" 200 992 "-" "curl/8.5.0" 88 0.001 [pinboard-pinboard-web-http] [] 10.244.2.9:8080 992 0.001 200 8b7e...
 ```
 
 The `[namespace-service-port]` field names the backend it chose, and the Pod IP after it
@@ -721,7 +750,10 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
 
    The first works; the second still hits the host-less `pinboard` Ingress. Delete the
    original Ingress and repeat to see a `404 Not Found` from the controller's default
-   backend — proof that the host header is part of the routing key.
+   backend — proof that the host header is part of the routing key. Then put things back
+   with `kubectl delete -f ingress-host.yaml` and `kubectl apply -f 40-ingress.yaml`: the
+   capstone (Lab 10) claims `pinboard.localtest.me` for its own Ingress, and ingress-nginx
+   refuses a second Ingress for the same host and path.
 2. **See the generated nginx config.**
    `kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- cat /etc/nginx/nginx.conf | grep -A12 'server_name pinboard.localtest.me'`
    Your Ingress object became an ordinary nginx `server` block. The controller is a

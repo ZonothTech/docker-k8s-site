@@ -258,7 +258,7 @@ is the same syntax you will use in scripts and CI.
 ```bash
 docker inspect pinboard-db --format '{{.State.Status}}'
 docker inspect pinboard-db --format '{{.State.StartedAt}}'
-docker inspect pinboard-db --format '{{.NetworkSettings.IPAddress}}'
+docker inspect pinboard-db --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
 docker inspect pinboard-db --format '{{.Config.Image}} → {{.Image}}'
 docker inspect pinboard-db --format '{{range .Config.Env}}{{println .}}{{end}}'
 ```
@@ -282,8 +282,8 @@ Two things to notice:
 1. The container has its **own IP** (`172.17.0.2`) on Docker's default bridge. That
    is why nothing had to be published for `psql` inside the container to work.
 2. Your **password is in plain text** in the container's configuration, readable by
-   anyone who can run `docker inspect`, and it will also show up in `docker inspect`
-   output, in `ps` output on the host, and in your shell history. Session 08 covers
+   anyone who can run `docker inspect`; it also sits in the process environment
+   (`/proc/<pid>/environ`, readable by root on the host) and in your shell history. Session 08 covers
    how Kubernetes handles this (and why Secrets are *encoded*, not encrypted).
 
 Now the interesting one — where does the data actually live?
@@ -563,6 +563,10 @@ Build Cache     0         0         0B        0B
 
 ## Stretch goal
 
+Stretch goals 2 and 3 need a running `pinboard-db`: start it again with the Step 02
+command first. When you are done, remove it (`docker rm -f pinboard-db`) and repeat the
+Step 09 clean-up so you end the lab with no containers and no volumes.
+
 1. **Let the image create the table for you.** Postgres runs any `*.sql` in
    `/docker-entrypoint-initdb.d/` on **first** start. Try it with a bind mount:
 
@@ -588,7 +592,7 @@ Build Cache     0         0         0B        0B
    This is the same idea as a container **health check** (Lab 03) and a Kubernetes
    **readiness probe** (Session 06).
 
-3. **Watch resources live.** Start the database again and run `docker stats` in a
+3. **Watch resources live.** With the database running, run `docker stats` in a
    second terminal while you insert a few thousand rows with
    `INSERT INTO notes (text) SELECT 'note ' || g FROM generate_series(1,5000) g;`.
    Note the memory number — Lab 03 puts a limit on it.

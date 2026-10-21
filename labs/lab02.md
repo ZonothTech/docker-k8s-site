@@ -65,10 +65,13 @@ total 40
 ```
 
 The copy already contains the finished Dockerfile. Move it out of the way so you can
-write your own — and so BuildKit does not pick it up by accident:
+write your own — and so BuildKit does not pick it up by accident. The copy also brought
+a hidden `.dockerignore` (`ls -la` shows it); delete it — you will write your own in
+Step 09 and see why it matters:
 
 ```bash
 mv Dockerfile Dockerfile.reference
+rm .dockerignore
 ```
 
 > **Note.** No Go knowledge is needed in this course. All you need to know about
@@ -137,6 +140,11 @@ pinboard-api   naive    3a9c7e12b04f   12 seconds ago   412MB
 
 **412 MB to ship a 10 MB program.** Every one of those megabytes is pulled on every
 node, scanned by every security scanner, and stored in every registry.
+
+> **Note.** On a fresh Docker 29 install (containerd image store, check with
+> `docker info -f '{{.Driver}}'` → `overlayfs`) `docker image ls` prints `DISK USAGE` and
+> `CONTENT SIZE` columns instead of `SIZE` — roughly 590 MB / 120 MB here and 20 MB /
+> 4.5 MB for the multi-stage image in Step 05. Different numbers, same lesson.
 
 > **Note.** If the build log ever shows `go: downloading go1.x (linux/amd64)`, that is
 > Go's toolchain switch: `go.mod` asked for a newer Go than the base image ships, so
@@ -479,7 +487,7 @@ docker build -t pinboard-web:1.0 ~/docker-kubernetes-training/src/pinboard-web
  => [1/6] FROM docker.io/library/nginx:1.28-alpine@sha256:b4d0c2f1e7a3…            2.1s
  => [2/6] RUN rm /etc/nginx/conf.d/default.conf                                    0.3s
  => [3/6] COPY nginx/default.conf.template /etc/nginx/templates/default.conf.…     0.0s
- => [4/6] COPY nginx/10-resolver.envsh /docker-entrypoint.d/10-resolver.envsh      0.0s
+ => [4/6] COPY --chmod=0755 nginx/10-resolver.envsh /docker-entrypoint.d/10-res…  0.0s
  => [5/6] COPY html/ /usr/share/nginx/html/                                        0.0s
  => [6/6] RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/…    0.4s
  => exporting to image                                                             0.3s
@@ -513,10 +521,11 @@ Don't run it yet — on its own it has no API to proxy to. That is Lab 03, one s
 
 ### Step 09: Layer caching and `.dockerignore`
 
-Back in `~/pinboard-labs/lab02/pinboard-api`, simulate a code change and rebuild:
+Back in `~/pinboard-labs/lab02/pinboard-api`, simulate a code change and rebuild. Append
+a line — `touch` would not do: BuildKit keys `COPY` on file *content*, not timestamps:
 
 ```bash
-touch main.go
+echo '// a code change' >> main.go
 docker build -t pinboard-api:1.0 --build-arg APP_VERSION=1.0 .
 ```
 
@@ -651,13 +660,25 @@ argument for small base images, in one screen.
    builds only the first stage. Run `docker run --rm -it pinboard-api:builder sh`
    and look at `/out/pinboard-api` and the Go toolchain that never ships. Handy in
    CI for running tests in the build stage.
-2. **Multi-platform.** If your machine can:
-   `docker buildx build --platform linux/amd64,linux/arm64 -t pinboard-api:1.0-multi .`
-   Note that this needs a `docker-container` builder
-   (`docker buildx create --use`), and that the result is an **index** (manifest
-   list) pointing at one image per architecture.
-3. **Attestations.** `docker buildx build --sbom=true --provenance=true -t pinboard-api:1.0-attested .`
-   then `docker buildx imagetools inspect` the result. Supply-chain metadata for free.
+2. **Multi-platform.** This needs a `docker-container` builder. Create one **without**
+   `--use` — `--use` would make every later plain `docker build` run on it and stop
+   loading images into your local store, which breaks the next labs:
+
+   ```bash
+   docker buildx create --name multi --driver docker-container --bootstrap
+   docker buildx build --builder multi --platform linux/amd64,linux/arm64 \
+     -t pinboard-api:1.0-multi -o type=oci,dest=../pinboard-api-multi.oci.tar .
+   tar tf ../pinboard-api-multi.oci.tar | head
+   ```
+
+   The result is an **index** (manifest list) pointing at one image per architecture.
+   Expect the arm64 half to be slow: this Dockerfile compiles it under QEMU emulation
+   (`exec format error` → run `docker run --privileged --rm tonistiigi/binfmt --install arm64` once).
+3. **Attestations.** Add `--sbom=true --provenance=true` to the same command (the default
+   `docker` builder refuses attestations on the classic image store). If you did Step 10,
+   push instead of exporting (`-t <DOCKER_ID>/pinboard-api:1.0-attested --push`) and run
+   `docker buildx imagetools inspect <DOCKER_ID>/pinboard-api:1.0-attested`.
+   Supply-chain metadata for free.
 4. **Make it worse, then better.** Add `RUN apk add --no-cache curl` to the *runtime*
    stage — it will fail, because distroless has no `apk` and no shell. Then think
    about what you actually lose by having no package manager in production.

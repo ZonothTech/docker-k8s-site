@@ -29,7 +29,7 @@
 ## Pre-requisites
 
 - Have finished [Lab 03](lab03.md)
-- Docker Engine 28+ with Compose v2 (`docker compose version`), from [Lab 00 – Course setup](lab00-setup.md)
+- Docker Engine 28+ with the Compose plugin, v2 or later (`docker compose version`), from [Lab 00 – Course setup](lab00-setup.md)
 - The course repo cloned at `~/docker-kubernetes-training`
 
 > **Continuity.** In Lab 03 you wired Pinboard together by hand: `docker network create`,
@@ -399,26 +399,30 @@ pinboard-api-3    pinboard-api:1.0   "/pinboard-api"   api       6 seconds ago  
 The name `api` now resolves to three IP addresses. nginx in the web container re-resolves
 it (`resolver … valid=10s`) and follows Docker's DNS, so requests are spread over the
 three containers. The `hostname` field of `/api/info` is the container ID, so you can see
-which one answered:
+which one answered. Wait ten seconds first (see the note below), then count who answered
+30 requests:
 
 ```bash
-for i in $(seq 1 30); do curl -s localhost:8080/api/info | jq -r .hostname; sleep 1; done | uniq -c
+sleep 10
+for i in $(seq 1 30); do curl -s localhost:8080/api/info | jq -r .hostname; done | sort | uniq -c
 ```
 
 ```text
-     10 a4f83c9e1b27
-     10 c7b21d4e8f90
+     11 a4f83c9e1b27
+      9 c7b21d4e8f90
      10 e19a6c30b5d4
 ```
 
 > **Note.** No `jq`? Use `grep`:
 > `curl -s localhost:8080/api/info | grep -o '"hostname":"[^"]*"'`.
 
-> **Note.** The hostname changes roughly every ten seconds rather than on every request:
-> nginx caches the DNS answer for `valid=10s`. Docker's embedded DNS returns the three
-> addresses in a rotating order, so over 30 seconds you see all three. This *is* load
-> balancing — but coarse, DNS-based and entirely dependent on the client honouring TTLs.
-> Kubernetes Services (Lab 07) balance per connection instead.
+> **Note.** nginx caches the DNS answer for `valid=10s`, so for up to ten seconds after
+> scaling, every request still goes to `pinboard-api-1` — that is why you waited. After
+> that, nginx holds all three addresses and picks one per request, so the counts come out
+> roughly even (not a strict rotation). This *is* load balancing — but DNS-based: nginx
+> only learns about new or removed replicas when its cache expires, and nothing checks
+> whether a replica is ready. Kubernetes Services (Lab 07) and readiness probes (Lab 06)
+> fix both.
 
 Map the container IDs back to Compose names:
 
@@ -486,10 +490,14 @@ docker compose watch
 ```
 
 ```text
-Watch configuration for service "web":
-  - Action sync for path "/home/student/pinboard-labs/lab04/pinboard-web/html"
-  - Action rebuild for path "/home/student/pinboard-labs/lab04/pinboard-web/Dockerfile"
+ Image pinboard-web:1.0 Built
+ Container pinboard-web-1  Recreated
+ Container pinboard-web-1  Started
+Watch enabled
 ```
+
+`watch` first builds the services that have a `build:` and brings the stack up to date,
+then waits for file changes. (The exact wording varies between Compose releases.)
 
 In a **second terminal**, edit the page title:
 
@@ -501,7 +509,7 @@ sed -i 's|<h1>📌 Pinboard</h1>|<h1>📌 Pinboard — live edit</h1>|' pinboard
 The first terminal reacts immediately:
 
 ```text
-Syncing service "web" after changes were detected: index.html
+Syncing service "web" after 1 changes were detected
 ```
 
 Reload <http://localhost:8080> — the heading changed, and no container was rebuilt or
@@ -512,18 +520,31 @@ touch pinboard-web/Dockerfile
 ```
 
 ```text
-Rebuilding service "web" after changes were detected...
- ✔ Service web  Built                                                      1.8s
-Service "web" is up-to-date
+Rebuilding service(s) ["web"] after changes were detected...
+service(s) ["web"] successfully built
+ Container pinboard-web-1  Recreated
+ Container pinboard-web-1  Started
 ```
 
 Stop the watcher with `Ctrl-C` (the containers keep running).
+
+That rebuild was tagged `pinboard-web:1.0` — the `image:` name in `compose.yaml` — so your
+edited heading is now baked into the image that Lab 05 loads into Kubernetes. Put the page
+back and rebuild once more:
+
+```bash
+sed -i 's|<h1>📌 Pinboard — live edit</h1>|<h1>📌 Pinboard</h1>|' pinboard-web/html/index.html
+docker compose build web
+```
 
 > **Warning.** `watch` is a *development* tool. It syncs from your working copy into a
 > running container, so the container's content no longer matches the image. Never rely
 > on it for anything you deploy — build an image and ship that.
 
 ### Step 09: A `tools` profile for one-off containers
+
+> **Optional** — skip to Step 10 if you are past ~30 minutes; profiles were shown in the
+> session (slide 16, Demo 4) and nothing later depends on this step.
 
 Not every service should start with `up`. `profiles:` marks services as opt-in. Add the
 two below to `compose.yaml` (before the `volumes:` block):
@@ -605,7 +626,7 @@ docker compose down
 ```text
 [+] Running 4/4
  ✔ Container pinboard-web-1   Removed                                      0.4s
- ✔ Container pinboard-api-1   Removed                                     10.2s
+ ✔ Container pinboard-api-1   Removed                                      0.3s
  ✔ Container pinboard-db-1    Removed                                      0.3s
  ✔ Network pinboard_default   Removed                                      0.2s
 ```
@@ -620,10 +641,11 @@ curl -s localhost:8080/api/notes | head -c 120
 
 The notes are still there: the data lived in `pinboard_pinboard-data`, which survived.
 
-> **Note.** The API took ~10 s to stop. That is not a hang: the Go process traps SIGTERM
-> and shuts down gracefully within `SHUTDOWN_GRACE` (default `10s`), draining in-flight
-> requests. The same behaviour is what `terminationGracePeriodSeconds` controls in
-> Kubernetes.
+> **Note.** The API stopped in a fraction of a second, and cleanly: the Go process traps
+> SIGTERM, drains in-flight requests (for at most `SHUTDOWN_GRACE`, default `10s`) and
+> exits 0 — the exec-form `ENTRYPOINT` from Lab 03, Step 08. A process that ignored
+> SIGTERM would hold `down` for the full 10 s and then be SIGKILLed. The same contract is
+> what `terminationGracePeriodSeconds` controls in Kubernetes.
 
 Now do the destructive version:
 
@@ -635,7 +657,7 @@ docker volume ls --filter name=pinboard
 ```text
 [+] Running 4/4
  ✔ Container pinboard-web-1          Removed                               0.4s
- ✔ Container pinboard-api-1          Removed                              10.2s
+ ✔ Container pinboard-api-1          Removed                               0.3s
  ✔ Container pinboard-db-1           Removed                               0.3s
  ✔ Volume pinboard_pinboard-data     Removed                               0.1s
  ✔ Network pinboard_default          Removed                               0.2s
@@ -648,9 +670,13 @@ it created. Keep it, and keep your images: Lab 05 loads them into Kubernetes.
 
 ## Stretch goal
 
-1. **Prove the ordering guarantee.** Set `POSTGRES_PASSWORD` to a wrong value in `.env`
-   for the `db` service only, run `docker compose up -d --wait`, and watch the API never
-   start because `db` never becomes healthy. Then read the failure message of `--wait`.
+1. **Prove the ordering guarantee.** Temporarily break the database health check: in
+   `compose.yaml` set the `db` healthcheck to `test: ["CMD", "false"]` and `retries: 3`,
+   then run `docker compose up -d --wait`. After ~15 s `--wait` fails with
+   `dependency failed to start: container pinboard-db-1 is unhealthy`, and
+   `docker compose ps -a` shows `api` and `web` stuck in `Created` — they were never
+   started. (A wrong `POSTGRES_PASSWORD` would *not* show this: `pg_isready` does not log
+   in, so the DB still reports healthy.) Put the healthcheck back and `docker compose down`.
 2. **Make the version a variable.** Change the API service to
    `image: pinboard-api:${API_TAG:-1.0}`, then run
    `API_TAG=1.1 APP_THEME=amber docker compose up -d --wait` — a shell variable beats
@@ -662,13 +688,16 @@ it created. Keep it, and keep your images: Lab 05 loads them into Kubernetes.
    `docker compose -f compose.yaml -f compose.ci.yaml config`. Note that `-f` replaces the
    automatic `compose.override.yaml` merge — with explicit `-f` flags, nothing is implicit.
 
+When you are done with the stretch goals, take the stack down again (`docker compose down`)
+— Lab 05 starts with no Compose stack running.
+
 ## Conclusion
 
 **What you have now**
 
 - `~/pinboard-labs/lab04/compose.yaml` — the whole Pinboard stack in one declarative
   file: healthcheck, dependency condition, named volume, init SQL, resource limit,
-  a published port on the web tier only, and a `tools` profile.
+  a published port on the web tier only, and (if you did Step 09) a `tools` profile.
 - `.env` + interpolation, so no credential is written in the compose file.
 - `compose.override.yaml` with `develop.watch` for a sync-on-save developer loop.
 - The muscle memory for `up -d --wait`, `ps`, `logs -f`, `exec`, `config`, `run --rm`,

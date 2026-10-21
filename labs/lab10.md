@@ -103,8 +103,9 @@ giving containers sensible defaults.
 
 **Hints.**
 
-- Lab 09, Step 09 for the three PSA labels (`enforce`, `audit`, `warn`) and Lab 09's
-  Stretch goal for the quota/limit-range shapes.
+- Lab 09, Step 09 for the PSA labels — it set `enforce` and `warn`; add the third
+  mode, `audit`, the same way — and Lab 09's Stretch goal for the quota/limit-range
+  shapes.
 - `kubectl explain resourcequota.spec.hard` and `kubectl explain limitrange.spec.limits`.
 - A quota on a resource makes that resource **mandatory** for every container in the
   namespace. The API deliberately has no CPU limit, so do not put `limits.cpu` in
@@ -530,6 +531,11 @@ kubectl kustomize overlays/dev | grep -c 'kind: HorizontalPodAutoscaler'
 kubectl apply -k overlays/dev
 ```
 
+> **Note.** Once `kustomization.yaml` sits in the folder, rebuild with
+> `kubectl apply -k .` instead of `kubectl apply -f .` — `-f .` would also send
+> `kustomization.yaml` to the API server, which rejects it (`no matches for kind
+> "Kustomization"`).
+
 The reference implementation is in
 `~/docker-kubernetes-training/labs/solutions/lab10/` (`kustomization.yaml`,
 `overlays/dev`, `overlays/prod`).
@@ -553,7 +559,7 @@ Test it by trying to reach the database from a Pod that is not the API:
 
 ```bash
 kubectl -n pinboard-prod run probe --rm -it --image=busybox:1.37 --restart=Never \
-  --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"probe","image":"busybox:1.37","stdin":true,"tty":true,"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \
+  --override-type=strategic --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"probe","image":"busybox:1.37","stdin":true,"tty":true,"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \
   -- sh -c 'nc -zv -w 3 pinboard-db 5432'
 ```
 
@@ -562,7 +568,9 @@ nc: pinboard-db (10.244.1.19:5432): Operation timed out
 ```
 
 (Note the `--overrides`: even a debugging Pod must satisfy the `restricted`
-standard now.) Remember that NetworkPolicy is enforced by the CNI — an object that
+standard now. `--override-type=strategic` merges the override into the generated
+container by name; the default JSON merge would replace the whole `containers` list
+and drop the `nc` command.) Remember that NetworkPolicy is enforced by the CNI — an object that
 applies cleanly is not proof that anything is filtered. Always test.
 
 ### 3. Helm-ify it
@@ -571,18 +579,30 @@ applies cleanly is not proof that anything is filtered. Always test.
 cd ~/pinboard-labs
 helm create pinboard-chart
 rm pinboard-chart/templates/*.yaml
-cp ~/pinboard-labs/lab10/*.yaml pinboard-chart/templates/
+cp ~/pinboard-labs/lab10/[0-9]*.yaml pinboard-chart/templates/
+rm pinboard-chart/templates/00-namespace.yaml
+sed -i '/^  namespace: pinboard-prod$/d' pinboard-chart/templates/*.yaml
 ```
+
+The last two lines matter: Helm installs a release into the namespace you name with
+`-n`, and it refuses to take over objects that already exist — so the chart must not
+carry the `pinboard-prod` Namespace or hard-coded `namespace:` fields (and
+`kustomization.yaml`, if you did Stretch 1, must not end up in `templates/`).
 
 Now parametrise: replace the image tag with `{{ .Values.api.image.tag }}`, the
 replica counts with `{{ .Values.api.replicas }}`, the greeting/theme with values,
-and the Ingress host with `{{ .Values.ingress.host }}`. Then:
+and the Ingress host with `{{ .Values.ingress.host }}` — add each of these keys to
+`values.yaml`. The release needs its own host, because ingress-nginx refuses a second
+Ingress for the same host and path. Then:
 
 ```bash
 helm template pinboard ./pinboard-chart --set api.image.tag=1.0 | grep image:
-helm install pinboard ./pinboard-chart -n pinboard-helm --create-namespace
+helm install pinboard ./pinboard-chart -n pinboard-helm --create-namespace \
+  --set ingress.host=helm.localtest.me --wait --timeout 5m
 helm list -n pinboard-helm
+curl -s http://helm.localtest.me/api/info; echo
 helm uninstall pinboard -n pinboard-helm
+kubectl delete namespace pinboard-helm    # the StatefulSet's PVC outlives the release
 ```
 
 Notice what you gain (one command, one release, `helm rollback`, values per

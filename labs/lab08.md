@@ -142,7 +142,7 @@ kubectl rollout status deployment/pinboard-web
 ```
 
 ```text
-namespace/pinboard configured
+namespace/pinboard unchanged
 deployment.apps/pinboard-api configured
 service/pinboard-api unchanged
 deployment.apps/pinboard-web configured
@@ -565,7 +565,7 @@ Line by line, the parts that are not obvious:
 | `clusterIP: None` | Makes the Service **headless**: no virtual IP, no load balancing. DNS returns the Pod IPs directly, and each Pod also gets `<pod>.<service>.<ns>.svc.cluster.local`. A database needs to be addressed, not load-balanced. |
 | `serviceName: pinboard-db` | Ties the StatefulSet to that headless Service — this is what makes the per-Pod DNS names exist. |
 | `securityContext.runAsUser/runAsGroup: 70` | UID/GID of `postgres` in `postgres:17-alpine`. Without it the image starts as root and drops privileges itself; we refuse root outright (`runAsNonRoot: true`) because Session 09 turns on Pod Security Admission. |
-| `fsGroup: 70` | The kubelet chowns the mounted volume to GID 70, otherwise the non-root process cannot write to a freshly provisioned directory. |
+| `fsGroup: 70` | On volume types that support it (cloud disks via CSI), the kubelet makes the mounted volume group-owned by GID 70, otherwise the non-root process cannot write to a freshly provisioned disk. kind's local-path volumes are plain host directories created world-writable, so here it changes nothing — it is there so the same manifest works on a cloud cluster. |
 | `seccompProfile: RuntimeDefault` | Uses the container runtime's default seccomp filter instead of "unconfined". Required by the `restricted` PSA level. |
 | `readOnlyRootFilesystem: true` | The container's own filesystem is immutable. Anything the process must write to needs an explicit volume — hence the two `emptyDir`s. |
 | `emptyDir` on `/tmp` and `/var/run/postgresql` | Scratch space and the Unix socket directory. `emptyDir` lives and dies with the **Pod** (not the container), which is fine for both. |
@@ -796,7 +796,7 @@ Change the greeting in the ConfigMap:
 
 ```bash
 kubectl patch configmap pinboard-api-config \
-  --type merge -p '{"data":{"APP_GREETING":"Pinned in Kubernetes 1.33"}}'
+  --type merge -p '{"data":{"APP_GREETING":"Pinned in Kubernetes 1.37"}}'
 curl -s http://localhost/api/info; echo
 ```
 
@@ -818,11 +818,13 @@ curl -s http://localhost/api/info; echo
 ```text
 deployment.apps/pinboard-api restarted
 deployment "pinboard-api" successfully rolled out
-{"app":"pinboard-api","greeting":"Pinned in Kubernetes 1.33","hostname":"pinboard-api-58c7d9f4b6-hn9lm","store":"postgres","theme":"emerald","uptime":"9s","version":"1.1"}
+{"app":"pinboard-api","greeting":"Pinned in Kubernetes 1.37","hostname":"pinboard-api-58c7d9f4b6-hn9lm","store":"postgres","theme":"emerald","uptime":"9s","version":"1.1"}
 ```
 
-A ConfigMap mounted as a **volume** behaves differently: the kubelet refreshes the
-files in place. Prove it with a throwaway Pod. Create `configmap-volume-pod.yaml`:
+**Optional (≈ 5 min, the instructor demo showed it).** A ConfigMap mounted as a
+**volume** behaves differently: the kubelet refreshes the files in place. Prove it
+with a throwaway Pod. If you are short on time, skip to the last command block of this
+step. Create `configmap-volume-pod.yaml`:
 
 ```yaml
 apiVersion: v1
@@ -861,17 +863,20 @@ Within about a minute the streaming log flips over on its own:
 
 ```text
 09:40:12
-Pinned in Kubernetes 1.33
+Pinned in Kubernetes 1.37
 09:40:22
-Pinned in Kubernetes 1.33
+Pinned in Kubernetes 1.37
 09:41:02
 Live update, no restart
 ```
 
-Stop the log with `Ctrl-C` and delete the Pod:
+Stop the log with `Ctrl-C`, then delete the Pod **and its file** — otherwise the
+`kubectl apply -f .` in the next labs would bring the throwaway Pod back (`--now`
+because a shell loop as PID 1 ignores SIGTERM and would sit out the 30 s grace period):
 
 ```bash
-kubectl delete pod cm-watch
+kubectl delete -f configmap-volume-pod.yaml --now
+rm configmap-volume-pod.yaml
 ```
 
 > **Note.** The refresh is not instant: the kubelet re-syncs mounted ConfigMaps and
@@ -916,7 +921,7 @@ kubectl rollout restart deployment/pinboard-api
    itself a Docker container:
 
    ```bash
-   kubectl get pv -o yaml | grep -A6 'nodeAffinity\|local:'
+   kubectl get pv -o yaml | grep -A6 'nodeAffinity\|hostPath:\|local:'
    docker exec pinboard-worker ls -l /var/local-path-provisioner
    docker exec pinboard-worker ls -l /var/local-path-provisioner/pvc-6f0c1b9e-25a4-4c7c-9a0f-1c0f3a8b7d21_pinboard_data-pinboard-db-0/pgdata | head
    ```
@@ -930,12 +935,17 @@ kubectl rollout restart deployment/pinboard-api
    claims it can *only* be scheduled there. Keep that in mind in Lab 09 when you
    drain a node.
 
-3. **Break it on purpose.** Change the Secret's `POSTGRES_PASSWORD` (only in the
-   Secret, not in `DATABASE_URL`) and `kubectl rollout restart deployment/pinboard-api`.
-   The API Pods stay `Running` but never become `Ready` — read
-   `kubectl logs deploy/pinboard-api` and `kubectl describe pod` to see readiness
-   failing. Then restore the Secret. Note that PostgreSQL itself is unaffected: the
-   password is only used to *bootstrap* the data directory on first start.
+3. **Break it on purpose.** In `01-db-secret.yaml`, change the password inside
+   `DATABASE_URL` only (leave `POSTGRES_PASSWORD` alone), `kubectl apply -f
+   01-db-secret.yaml` and `kubectl rollout restart deployment/pinboard-api`. The new API
+   Pod never becomes `Ready` and ends in `CrashLoopBackOff`: read
+   `kubectl logs <new-pod>` (`database not ready, retrying … password authentication
+   failed`) and `kubectl describe pod <new-pod>` (startup probe failures, restarts). The
+   old Pods keep serving — `maxUnavailable: 0` from Lab 06 at work. Restore the file and
+   re-apply it; the next restart of the crashing Pod picks up the right value and the
+   rollout completes. Note the asymmetry: changing `POSTGRES_PASSWORD` alone would break
+   *nothing* — PostgreSQL only reads it to bootstrap an empty data directory, and the
+   data directory already exists.
 
 ## Conclusion
 
@@ -959,7 +969,8 @@ restart.
 
 **Cleanup: none.** Leave everything running — Lab 09 autoscales this exact
 Deployment, breaks it on purpose and drains a node underneath it. If you deleted
-the throwaway `cm-watch` Pod, you are already in the right state:
+the throwaway `cm-watch` Pod and its file, you are already in the right state (the
+folder holds exactly the seven files above):
 
 ```bash
 kubectl get all

@@ -13,7 +13,7 @@
   - [Step 06: The same Pod, declaratively](#step-06-the-same-pod-declaratively)
   - [Step 07: Read the object, read the events](#step-07-read-the-object-read-the-events)
   - [Step 08: Break it — a Pod that cannot pull](#step-08-break-it--a-pod-that-cannot-pull)
-  - [Step 09: A multi-container Pod with a sidecar](#step-09-a-multi-container-pod-with-a-sidecar)
+  - [Step 09: A multi-container Pod with a sidecar](#step-09-a-multi-container-pod-with-a-sidecar) *(optional)*
   - [Step 10: Clean up the Pods, keep the cluster](#step-10-clean-up-the-pods-keep-the-cluster)
 - [Stretch goal](#stretch-goal)
 - [Conclusion](#conclusion)
@@ -30,7 +30,7 @@
 ## Pre-requisites
 
 - Have finished [Lab 04](lab04.md)
-- `kind` 0.29+, `kubectl` 1.33+ and Docker running (from [Lab 00 – Course setup](lab00-setup.md))
+- `kind` v0.33, `kubectl` 1.37 and Docker running (from [Lab 00 – Course setup](lab00-setup.md))
 - The course repo cloned at `~/docker-kubernetes-training`
 - No Compose stack running (`docker compose ls` should be empty) — kind needs the RAM
 
@@ -63,7 +63,7 @@ kind create cluster --config ~/docker-kubernetes-training/labs/kind-config.yaml
 
 ```text
 Creating cluster "pinboard" ...
- ✓ Ensuring node image (kindest/node:v1.33.1) 🖼
+ ✓ Ensuring node image (kindest/node:v1.37.0) 🖼
  ✓ Preparing nodes 📦 📦 📦
  ✓ Writing configuration 📜
  ✓ Starting control-plane 🕹️
@@ -79,7 +79,8 @@ Have a nice day! 👋
 ```
 
 The cluster name comes from the config file (`name: pinboard`), which is why no `--name`
-flag is needed. Creating the cluster takes 1–2 minutes the first time.
+flag is needed. Creating the cluster takes 1–2 minutes — longer the very first time, when
+the ~1 GB `kindest/node` image is downloaded. Read Step 02 while you wait.
 
 > **Note.** The nodes are Docker containers — look at them with `docker ps`. That is also
 > why `kubectl` on your laptop can reach the API server: kind published it on a random
@@ -104,9 +105,9 @@ kubectl get nodes -o wide
 
 ```text
 NAME                     STATUS   ROLES           AGE     VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION      CONTAINER-RUNTIME
-pinboard-control-plane   Ready    control-plane   2m14s   v1.33.1   172.18.0.4    <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-51-generic    containerd://2.1.1
-pinboard-worker          Ready    <none>          1m58s   v1.33.1   172.18.0.2    <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-51-generic    containerd://2.1.1
-pinboard-worker2         Ready    <none>          1m58s   v1.33.1   172.18.0.3    <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-51-generic    containerd://2.1.1
+pinboard-control-plane   Ready    control-plane   2m14s   v1.37.0   172.18.0.4    <none>        Debian GNU/Linux 13 (trixie)     6.8.0-51-generic    containerd://2.3.4
+pinboard-worker          Ready    <none>          1m58s   v1.37.0   172.18.0.2    <none>        Debian GNU/Linux 13 (trixie)     6.8.0-51-generic    containerd://2.3.4
+pinboard-worker2         Ready    <none>          1m58s   v1.37.0   172.18.0.3    <none>        Debian GNU/Linux 13 (trixie)     6.8.0-51-generic    containerd://2.3.4
 ```
 
 Two things to notice: the node IPs are Docker network addresses, and the container
@@ -620,6 +621,9 @@ Scheduling problems are cluster-level; image problems are node-level.
 
 ### Step 09: A multi-container Pod with a sidecar
 
+> **Short on time?** This step is optional — nothing in later labs depends on it. Jump to
+> [Step 10](#step-10-clean-up-the-pods-keep-the-cluster) and come back to it after class.
+
 A Pod can hold several containers that share one network namespace (they reach each other
 on `localhost`) and any volumes you define. Create `pod-sidecar.yaml`:
 
@@ -689,8 +693,8 @@ spec:
 ```
 
 The surprising part is that the sidecars are declared under `initContainers`. An init
-container with `restartPolicy: Always` is a **native sidecar** (stable since Kubernetes
-1.29): it starts *before* the main containers, keeps running alongside them, is restarted
+container with `restartPolicy: Always` is a **native sidecar** (on by default since
+Kubernetes 1.29, GA in 1.33): it starts *before* the main containers, keeps running alongside them, is restarted
 if it dies, and is terminated *after* them. Before this existed, sidecars were ordinary
 containers — which broke Jobs (the Pod never completed) and shut down in an unpredictable
 order.
@@ -754,6 +758,8 @@ pod "pinboard-api-broken" deleted
 pod "pinboard-api-sidecar" deleted
 No resources found in pinboard namespace.
 ```
+
+(Skipped Step 09? Leave `-f pod-sidecar.yaml` out — `kubectl` refuses a file that does not exist.)
 
 Confirm the cluster is still there and still your default context:
 

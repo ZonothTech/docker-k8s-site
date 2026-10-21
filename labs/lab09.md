@@ -198,8 +198,9 @@ pinboard-api   Deployment/pinboard-api   cpu: 2%/50%   2         6         3    
 ```
 
 > **Note.** From now on the HPA owns `spec.replicas` of that Deployment. Leaving
-> `replicas: 3` in the manifest is fine (it is only used when the Deployment is
-> first created), but never `kubectl scale` a Deployment that has an HPA — the
+> `replicas: 3` in the manifest is tolerable (a later `kubectl apply` resets the count
+> to 3 and the HPA corrects it again within a minute — remove the field once an HPA owns
+> the Deployment), but never `kubectl scale` a Deployment that has an HPA — the
 > controller will just undo you within 15 seconds.
 
 ### Step 04: Generate load and watch it scale
@@ -259,7 +260,8 @@ pinboard-api   Deployment/pinboard-api   cpu: 189%/50%   2         6         6  
 pinboard-api   Deployment/pinboard-api   cpu: 154%/50%   2         6         6          5m0s
 ```
 
-Three replicas at 318 % of target → `ceil(3 × 3.18) = 10`, clamped to `maxReplicas: 6`.
+Three replicas at 318 % against a 50 % target → `ceil(3 × 318 / 50) = ceil(19.08) = 20`,
+clamped to `maxReplicas: 6`.
 Leave the watch running for a minute or two, then `Ctrl-C` and confirm:
 
 ```bash
@@ -356,11 +358,20 @@ pinboard-api-58c7d9f4b6-lq2vp   1/1     Running            0             24m
 pinboard-api-6b7c4d8f9c-9vk2r   0/1     CrashLoopBackOff   3 (18s ago)   52s
 ```
 
-**get** tells you the state and that it has restarted three times. **describe** tells
-you why the kubelet is waiting:
+**get** tells you the state and that it has restarted three times. Keep the name of the
+broken Pod — it is the newest one — so the next commands look at it and not at the
+healthy ones:
 
 ```bash
-kubectl describe pod -l app.kubernetes.io/name=pinboard-api | sed -n '/^Containers:/,/^Conditions:/p'
+BAD=$(kubectl get pods -l app.kubernetes.io/name=pinboard-api \
+  --sort-by=.metadata.creationTimestamp -o name | tail -1)
+echo "$BAD"
+```
+
+**describe** tells you why the kubelet is waiting:
+
+```bash
+kubectl describe "$BAD" | sed -n '/^Containers:/,/^Conditions:/p'
 ```
 
 ```text
@@ -382,17 +393,19 @@ restarts (10s, 20s, 40s … up to 5 min). The real error is in `Last State`. The
 container is dead right now, so ask for the *previous* container's logs:
 
 ```bash
-kubectl logs -l app.kubernetes.io/name=pinboard-api --tail=5 --previous | tail -3
+kubectl logs "$BAD" --previous --tail=3
 ```
 
 ```text
 {"time":"2026-08-20T10:12:41.508Z","level":"ERROR","msg":"CRASH_ON_START is set — exiting with status 1 (this is on purpose)"}
 ```
 
-> **Note.** Forgetting `--previous` is the single most common reason people say
-> "there are no logs". Without it you ask for the logs of a container that has not
-> started yet and get `Error from server (BadRequest): container "api" in pod … is
-> waiting to start: CrashLoopBackOff`.
+> **Note.** `--previous` always means "the last container that died". Without it you
+> get the *current* instance: while the Pod sits in back-off kubectl falls back to the
+> dead one, but the moment the kubelet restarts it you are reading a fresh container
+> that has not crashed yet — and its logs may well look healthy. Also, `--previous`
+> with `-l` would fail on the healthy Pods (they have no previous container), which is
+> why we picked the broken Pod by name.
 
 Also note that the rollout protected you: `maxUnavailable: 0` plus a readiness probe
 means the two healthy old Pods are still serving. Check:
@@ -423,10 +436,11 @@ deployment "pinboard-api" successfully rolled out
 ### Step 06: Drill B — OOMKilled
 
 Memory limits are enforced by the kernel's cgroup OOM killer, not by Kubernetes.
-Squeeze the API into 16 Mi:
+Squeeze the API into 16 Mi. The request has to come down too — Kubernetes rejects a
+container whose memory request (32 Mi in your manifest) is larger than its limit:
 
 ```bash
-kubectl set resources deployment/pinboard-api --limits=memory=16Mi
+kubectl set resources deployment/pinboard-api --requests=memory=16Mi --limits=memory=16Mi
 sleep 30
 kubectl get pods -l app.kubernetes.io/name=pinboard-api
 ```
@@ -440,11 +454,17 @@ pinboard-api-58c7d9f4b6-lq2vp   1/1     Running            0             31m
 pinboard-api-7f8d6c5b49-mn4xt   0/1     CrashLoopBackOff   2 (12s ago)   34s
 ```
 
+> **Note.** The Go runtime's footprint varies a little between machines. If the new Pod
+> is still `Running` after a minute, squeeze harder:
+> `kubectl set resources deployment/pinboard-api --requests=memory=8Mi --limits=memory=8Mi`.
+
 Same symptom as Drill A — **different cause**, and only `describe` distinguishes
 them:
 
 ```bash
-kubectl describe pod -l app.kubernetes.io/name=pinboard-api | sed -n '/Last State/,/Restart Count/p'
+BAD=$(kubectl get pods -l app.kubernetes.io/name=pinboard-api \
+  --sort-by=.metadata.creationTimestamp -o name | tail -1)
+kubectl describe "$BAD" | sed -n '/Last State/,/Restart Count/p'
 ```
 
 ```text
@@ -462,7 +482,7 @@ signature: **empty/normal logs + exit 137 = the memory limit is too low** (or yo
 have a leak).
 
 ```bash
-kubectl logs -l app.kubernetes.io/name=pinboard-api --previous --tail=3
+kubectl logs "$BAD" --previous --tail=3
 ```
 
 ```text
@@ -555,8 +575,8 @@ separate "the app is broken" from "the Service/Ingress does not reach the app".
 > deleting the Pod is the cleanup. It does not restart the Pod and it does not
 > count against the Deployment's containers.
 
-The same command can open a shell on a **node**, which on kind is a Docker
-container:
+**Optional if you are short on time** (Step 08 matters more): the same command can
+open a shell on a **node**, which on kind is a Docker container:
 
 ```bash
 kubectl debug node/pinboard-worker -it --image=busybox:1.37
@@ -662,7 +682,7 @@ kubectl get pdb
 
 ```text
 NAME                            READY   STATUS    RESTARTS   AGE   IP            NODE
-pinboard-api-58c7d9f4b6-4wq9x   1/1     Running   0          9m    10.244.2.9    pinboard-worker2
+pinboard-api-58c7d9f4b6-4wq9x   1/1     Running   0          9m    10.244.1.13   pinboard-worker
 pinboard-api-58c7d9f4b6-hn9lm   1/1     Running   0          46m   10.244.1.11   pinboard-worker
 pinboard-api-58c7d9f4b6-lq2vp   1/1     Running   0          46m   10.244.2.7    pinboard-worker2
 
@@ -676,9 +696,12 @@ pinboard-api   2               N/A               1                     97s
 > bug in the lab — it is what node-local storage means, and it is exactly the
 > conversation to have before running a database on `hostPath`-style volumes.
 
-Drain a worker. `--ignore-daemonsets` is needed because DaemonSet Pods (kube-proxy,
-the CNI) are not evictable, and `--delete-emptydir-data` because Pods with an
-`emptyDir` would otherwise block the drain:
+Drain the worker that runs **two** of the API Pods — `pinboard-worker` in the output
+above; look at your own `NODE` column and use that name in the drain and uncordon
+commands below. (Drain a node with only one API Pod and the eviction is simply
+allowed: `ALLOWED DISRUPTIONS` is 1.) `--ignore-daemonsets` is needed because
+DaemonSet Pods (kube-proxy, the CNI) are not evictable, and `--delete-emptydir-data`
+because Pods with an `emptyDir` would otherwise block the drain:
 
 ```bash
 kubectl drain pinboard-worker --ignore-daemonsets --delete-emptydir-data
@@ -689,19 +712,21 @@ node/pinboard-worker cordoned
 Warning: ignoring DaemonSet-managed Pods: kube-system/kindnet-8n7lp, kube-system/kube-proxy-r2mtq
 evicting pod pinboard/pinboard-db-0
 evicting pod pinboard/pinboard-api-58c7d9f4b6-hn9lm
+evicting pod pinboard/pinboard-api-58c7d9f4b6-4wq9x
 evicting pod pinboard/pinboard-web-7d9b5c6f8b-4nkzq
-error when evicting pods/"pinboard-api-58c7d9f4b6-hn9lm" -n "pinboard" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
-evicting pod pinboard/pinboard-api-58c7d9f4b6-hn9lm
+error when evicting pods/"pinboard-api-58c7d9f4b6-4wq9x" -n "pinboard" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.
 pod/pinboard-web-7d9b5c6f8b-4nkzq evicted
 pod/pinboard-db-0 evicted
 pod/pinboard-api-58c7d9f4b6-hn9lm evicted
+evicting pod pinboard/pinboard-api-58c7d9f4b6-4wq9x
+pod/pinboard-api-58c7d9f4b6-4wq9x evicted
 node/pinboard-worker drained
 ```
 
-Read the interesting line: the first eviction attempt was **refused** by the API
-server because it would have left fewer than 2 API Pods available. `kubectl drain`
-retried until the replacement Pod on the other worker became Ready, and only then
-was the eviction allowed. Without the PDB, all three could have gone at once.
+Read the interesting line: the second API eviction was **refused** by the API server
+because it would have left fewer than 2 API Pods available. `kubectl drain` retried
+until the replacement Pod on the other worker became Ready, and only then was the
+eviction allowed. Without the PDB, both would have gone at once.
 
 Look at the damage and then undo it:
 
@@ -711,7 +736,7 @@ kubectl get pods -o wide
 
 ```text
 NAME                            READY   STATUS    RESTARTS   AGE     IP           NODE
-pinboard-api-58c7d9f4b6-4wq9x   1/1     Running   0          12m     10.244.2.9   pinboard-worker2
+pinboard-api-58c7d9f4b6-k8f5n   1/1     Running   0          58s     10.244.2.15  pinboard-worker2
 pinboard-api-58c7d9f4b6-lq2vp   1/1     Running   0          49m     10.244.2.7   pinboard-worker2
 pinboard-api-58c7d9f4b6-w2ph8   1/1     Running   0          73s     10.244.2.14  pinboard-worker2
 pinboard-db-0                   0/1     Pending   0          70s     <none>       <none>

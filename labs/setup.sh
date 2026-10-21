@@ -3,11 +3,11 @@
 # Containers & Kubernetes Fundamentals — lab machine setup
 #
 #   Installs, on Debian/Ubuntu (22.04, 24.04 or similar):
-#     * Docker Engine 28+ (docker-ce, docker-ce-cli, containerd.io,
+#     * Docker Engine (latest stable: docker-ce, docker-ce-cli, containerd.io,
 #       docker-buildx-plugin, docker-compose-plugin) from the official apt repo
-#     * kubectl (current stable channel from pkgs.k8s.io)
-#     * kind    (latest release binary from GitHub)
-#     * helm    (official get-helm-3 script)
+#     * kubectl (pkgs.k8s.io channel matching the cluster version, v1.37)
+#     * kind    (pinned release v0.33.0 -> Kubernetes 1.37 node image)
+#     * helm    (official get-helm-4 script)
 #     * k9s     (optional, ON by default — set INSTALL_K9S=no to skip)
 #     * VS Code + Docker/Kubernetes/YAML extensions (optional, OFF by default —
 #       set INSTALL_VSCODE=yes to include it)
@@ -27,7 +27,12 @@
 
 set -euo pipefail
 
-KUBECTL_CHANNEL="${KUBECTL_CHANNEL:-v1.33}"   # pkgs.k8s.io minor-version channel
+# Pinned so every machine runs the same cluster version. kind decides the
+# Kubernetes version (its default node image); kubectl must be within one minor
+# of it. Keep in step with infra/azure-lab-vms (kind_version, kubectl_channel).
+KIND_VERSION="${KIND_VERSION:-v0.33.0}"        # -> kindest/node:v1.37.0
+KUBECTL_CHANNEL="${KUBECTL_CHANNEL:-v1.37}"   # pkgs.k8s.io minor-version channel
+HELM_MAJOR="${HELM_MAJOR:-4}"                 # Helm 3 gets security fixes only until 2027-02-10
 INSTALL_K9S="${INSTALL_K9S:-yes}"
 INSTALL_VSCODE="${INSTALL_VSCODE:-no}"
 
@@ -78,7 +83,7 @@ log "Lab machine setup"
 info "distribution : ${PRETTY_NAME}  (${DISTRO}/${CODENAME})"
 info "architecture : ${ARCH_DEB}"
 info "user         : ${TARGET_USER}"
-info "options      : k9s=${INSTALL_K9S} vscode=${INSTALL_VSCODE} kubectl=${KUBECTL_CHANNEL}"
+info "options      : k9s=${INSTALL_K9S} vscode=${INSTALL_VSCODE} kubectl=${KUBECTL_CHANNEL} kind=${KIND_VERSION} helm=${HELM_MAJOR}"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -140,13 +145,8 @@ sudo apt-get install -y -qq kubectl
 
 # ---------------------------------------------------------------- 4. kind ----
 
-log "4/7 kind"
-KIND_WANTED="$(curl -fsSL https://api.github.com/repos/kubernetes-sigs/kind/releases/latest \
-                 | jq -r '.tag_name' 2>/dev/null || true)"
-[[ -n "${KIND_WANTED}" && "${KIND_WANTED}" != "null" ]] || {
-  KIND_WANTED="v0.29.0"
-  warn "could not read the latest kind release from GitHub — falling back to ${KIND_WANTED}"
-}
+log "4/7 kind ${KIND_VERSION}"
+KIND_WANTED="${KIND_VERSION}"
 
 KIND_HAVE="$(kind version 2>/dev/null | awk '{print $2}' || true)"
 if [[ "${KIND_HAVE}" == "${KIND_WANTED}" ]]; then
@@ -161,12 +161,13 @@ fi
 
 # ---------------------------------------------------------------- 5. helm ----
 
-log "5/7 helm"
-if have helm; then
-  info "helm already installed ($(helm version --short 2>/dev/null || echo unknown))"
+log "5/7 helm ${HELM_MAJOR}"
+HELM_HAVE="$(helm version --short 2>/dev/null || true)"
+if [[ "${HELM_HAVE}" == "v${HELM_MAJOR}."* ]]; then
+  info "helm already installed (${HELM_HAVE})"
 else
-  info "running the official get-helm-3 script"
-  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
+  info "running the official get-helm-${HELM_MAJOR} script"
+  curl -fsSL "https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-${HELM_MAJOR}" \
     | sudo bash >/dev/null
 fi
 
