@@ -103,7 +103,7 @@ Every lab refers to files under `~/docker-kubernetes-training/src/...`, so clone
 into your home directory with exactly that name.
 
 ```bash
-git clone https://github.com/zonoth/docker-kubernetes-training.git ~/docker-kubernetes-training
+git clone https://github.com/ZonothTech/docker-k8s-site.git ~/docker-kubernetes-training
 ```
 
 ```text

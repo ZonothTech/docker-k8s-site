@@ -1,0 +1,30 @@
+# Lab 07 stretch goal — the same routing, but only for one host name.
+# pinboard.localtest.me resolves to 127.0.0.1 in public DNS, so no /etc/hosts
+# entry is needed. Requests to http://localhost/ no longer match this Ingress.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pinboard-host
+  namespace: pinboard
+  labels:
+    app.kubernetes.io/part-of: pinboard
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: pinboard.localtest.me
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: pinboard-api
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pinboard-web
+                port:
+                  name: http

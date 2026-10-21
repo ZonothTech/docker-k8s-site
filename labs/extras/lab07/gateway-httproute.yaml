@@ -1,0 +1,51 @@
+# Lab 07 stretch goal (READ ONLY — nothing will serve this in our cluster).
+#
+# The Gateway API is the successor of Ingress. Its objects are CRDs, so they
+# must be installed first:
+#   kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
+#
+# ingress-nginx does NOT implement the Gateway API. Creating these objects on
+# our cluster is accepted by the API server, but no controller picks them up:
+# the Gateway stays PROGRAMMED=Unknown/False and nothing is routed. A Gateway
+# controller such as Envoy Gateway, Istio or Cilium would be needed — do not
+# install one during the lab.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: pinboard
+  namespace: pinboard
+spec:
+  gatewayClassName: envoy-gateway   # whatever controller you run
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: pinboard
+  namespace: pinboard
+spec:
+  parentRefs:
+    - name: pinboard
+  hostnames:
+    - pinboard.localtest.me
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: pinboard-api
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: pinboard-web
+          port: 8080

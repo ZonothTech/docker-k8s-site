@@ -964,17 +964,7 @@ demo.
 Your `~/pinboard-labs/lab09/` folder is now the canonical end state of the course:
 `00-namespace.yaml`, `01-db-secret.yaml`, `02-api-configmap.yaml`,
 `10-db-statefulset.yaml`, `20-api-deployment.yaml` (Deployment + Service + PDB +
-HPA), `30-web-deployment.yaml` and `40-ingress.yaml`. Compare them with the
-reference:
-
-```bash
-diff -r ~/pinboard-labs/lab09 ~/docker-kubernetes-training/labs/solutions/final
-```
-
-> **Note.** Expect three kinds of difference and nothing else: your own
-> `90-load-generator.yaml` and any stretch-goal files you added (`03-quota-limitrange.yaml`),
-> the capstone's `50-networkpolicy.yaml`, which only exists in the reference folder, and
-> cosmetic ones (comments, key order). Anything else is worth a look.
+HPA), `30-web-deployment.yaml` and `40-ingress.yaml`.
 
 **Cleanup: none.** Keep the cluster and the namespace — Lab 10 builds a *second*,
 production-shaped namespace next to this one and you will want these files as your

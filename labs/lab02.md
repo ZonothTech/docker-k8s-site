@@ -85,7 +85,7 @@ rm .dockerignore
 This is what almost everyone writes the first time: take the language's official
 image, copy the source in, build, run.
 
-Create `Dockerfile` (also in `labs/solutions/lab02/Dockerfile.naive`):
+Create `Dockerfile`:
 
 ```dockerfile
 # The obvious first attempt: one stage, the full Go toolchain, ship everything.
@@ -187,8 +187,7 @@ The fix is not to clean up. The fix is to **build in one image and ship from ano
 ### Step 04: Rewrite it as a multi-stage build
 
 Replace the contents of `Dockerfile` with the version below — this is the real
-Pinboard API Dockerfile (identical to `labs/solutions/lab02/Dockerfile` and to
-`Dockerfile.reference` you moved aside):
+Pinboard API Dockerfile (identical to `Dockerfile.reference` you moved aside):
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -218,7 +217,7 @@ FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="pinboard-api" \
       org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.source="https://github.com/zonoth/docker-kubernetes-training" \
+      org.opencontainers.image.source="https://github.com/ZonothTech/docker-k8s-site" \
       org.opencontainers.image.description="Pinboard API — Containers & Kubernetes course sample"
 
 ENV PORT=8080 APP_VERSION=${APP_VERSION}
@@ -446,7 +445,7 @@ Lab 06. The API crashes on start when `CRASH_ON_START=true`.
 > build-args were not consumed`). Only `ENV` puts a variable into the *running*
 > container's environment.
 
-Create `Dockerfile.broken` (also in `labs/solutions/lab02/Dockerfile.broken`):
+Create `Dockerfile.broken`:
 
 ```dockerfile
 FROM pinboard-api:1.0
@@ -559,8 +558,7 @@ docker build -t pinboard-api:1.0 --build-arg APP_VERSION=1.0 . 2>&1 | grep -A1 '
 ```
 
 26 MB uploaded for nothing — and because `COPY . .` copied the junk file, the build
-cache was invalidated too. Create `.dockerignore` (also in
-`labs/solutions/lab02/.dockerignore`):
+cache was invalidated too. Create `.dockerignore`:
 
 ```text
 # Everything the build does not need. Same syntax as .gitignore.
@@ -704,7 +702,7 @@ pinboard-api   naive        3a9c7e12b04f   22 minutes ago   412MB
 > `pinboard-api:1.2-broken` and `pinboard-web:1.0` — are **needed by every lab from
 > here to the capstone**. Do not `docker image prune -a`, and do not rebuild your lab
 > VM without re-running this lab. If you ever lose them:
-> `bash ~/docker-kubernetes-training/labs/solutions/lab02/build-all.sh` rebuilds all four.
+> `bash ~/docker-kubernetes-training/labs/extras/build-all.sh` rebuilds all four.
 
 You can drop the oversized experiment, though:
 

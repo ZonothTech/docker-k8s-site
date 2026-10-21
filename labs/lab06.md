@@ -69,9 +69,7 @@ delete them (`kubectl delete pod --all`).
 ### Step 02: Write the Deployment
 
 Create `20-api-deployment.yaml`. The numeric prefix is a convention, not a requirement: it
-makes `kubectl apply -f .` process a folder of manifests in a sensible order later, and it
-matches the layout of the finished project in
-`~/docker-kubernetes-training/labs/solutions/final/`. You will keep adding to this one file
+makes `kubectl apply -f .` process a folder of manifests in a sensible order later. You will keep adding to this one file
 until Lab 09.
 
 ```yaml
@@ -482,8 +480,6 @@ the `readinessProbe` block deleted, and an env var that makes the API stop being
               value: "15"
 ```
 
-(The full file is in `labs/solutions/lab06/20-api-deployment-noready.yaml`.)
-
 ```bash
 kubectl apply -f 20-api-deployment-noready.yaml
 kubectl rollout status deployment/pinboard-api
@@ -758,8 +754,7 @@ kubectl logs job/heartbeat-manual
 
 > **Note.** The obvious CronJob for Pinboard — "curl `/readyz` every minute and alert if
 > it fails" — needs a stable address for the API. That is a Service, and it is the first
-> thing you build in Lab 07. The commented line in
-> `labs/solutions/lab06/cronjob-heartbeat.yaml` shows what it becomes.
+> thing you build in Lab 07.
 
 ### Step 10: Clean up the batch objects, keep the Deployment
 
@@ -822,8 +817,7 @@ replicaset.apps/pinboard-api-7c9b6d4f85   0         0         0       38m
   startup + readiness + liveness probes, requests and limits, `maxSurge: 1` /
   `maxUnavailable: 0`, and a recorded change cause.
 - `20-api-deployment.yaml`, `20-api-deployment-noready.yaml`, `job-migrate.yaml` and
-  `cronjob-heartbeat.yaml` in `~/pinboard-labs/lab06/` (solutions in
-  `labs/solutions/lab06/`).
+  `cronjob-heartbeat.yaml` in `~/pinboard-labs/lab06/`.
 - First-hand evidence for four things: a controller replaces deleted Pods; a broken
   release with `maxUnavailable: 0` stalls instead of taking you down; `rollout undo` is
   seconds, not minutes; and a rolling update without readiness is an outage with a green

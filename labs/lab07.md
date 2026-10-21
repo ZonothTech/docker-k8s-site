@@ -741,7 +741,8 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
 
 1. **Host-based routing.** `*.localtest.me` resolves to `127.0.0.1` in public DNS, so you
    can use a real host name with no `/etc/hosts` edit. Create `ingress-host.yaml`
-   (in `labs/solutions/lab07/`) with `host: pinboard.localtest.me` and apply it, then:
+   with `host: pinboard.localtest.me` (a ready-made copy is in
+   `labs/extras/lab07/ingress-host.yaml`) and apply it, then:
 
    ```bash
    curl -s http://pinboard.localtest.me/api/info
@@ -766,7 +767,7 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
    kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
    ```
 
-   Read `labs/solutions/lab07/gateway-httproute.yaml` to see Pinboard's routing expressed
+   Read `labs/extras/lab07/gateway-httproute.yaml` to see Pinboard's routing expressed
    as an `HTTPRoute`. **ingress-nginx does not implement the Gateway API**, so nothing in
    our cluster would serve those objects — a Gateway controller such as Envoy Gateway,
    Istio or Cilium would be needed. Do not install one during the lab; compare the shapes
@@ -793,9 +794,6 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
   | `20-api-deployment.yaml` | Deployment + Service `pinboard-api` |
   | `30-web-deployment.yaml` | Deployment + Service `pinboard-web` |
   | `40-ingress.yaml` | Ingress `pinboard` on <http://localhost> |
-
-  (solutions in `labs/solutions/lab07/`; the numbering matches
-  `labs/solutions/final/`, which is where these files end up by Lab 09.)
 
 **Kept for the next lab:** everything — the cluster, the `pinboard` namespace with both
 Deployments, both Services and the Ingress, plus the `ingress-nginx` namespace.

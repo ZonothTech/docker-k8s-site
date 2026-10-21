@@ -44,8 +44,8 @@
 ### Step 01: Prepare your working folder and pull the image
 
 All the work you do by hand in this course lives under `~/pinboard-labs/labNN/`.
-Keeping it out of the cloned repo means you can always compare your files with the
-provided solutions and `git pull` without conflicts.
+Keeping it out of the cloned repo means you can always `git pull` the course repo
+without conflicts.
 
 ```bash
 mkdir -p ~/pinboard-labs/lab01
@@ -174,8 +174,7 @@ pinboard=#
 ```
 
 At the `pinboard=#` prompt, create the table Pinboard uses. This is the same DDL as
-`~/docker-kubernetes-training/src/db/init.sql` (also saved for you as
-`labs/solutions/lab01/notes.sql`):
+`~/docker-kubernetes-training/src/db/init.sql`):
 
 ```sql
 CREATE TABLE IF NOT EXISTS notes (

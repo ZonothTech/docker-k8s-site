@@ -97,7 +97,7 @@ Session 10 is 30 min theory + an 80 min capstone lab.
 2. Clone this repository to the path every lab uses:
 
    ```bash
-   git clone https://github.com/zonoth/docker-kubernetes-training.git ~/docker-kubernetes-training
+   git clone https://github.com/ZonothTech/docker-k8s-site.git ~/docker-kubernetes-training
    ```
 
 3. Install the toolchain — Docker Engine 28+ (with Compose v2 and Buildx), kubectl, kind and
@@ -128,6 +128,11 @@ have), so finish them in order; if you fall behind, catch up before the next ses
 | [Lab 08 — Give Pinboard a real database](./labs/lab08.md) | 08 | Secret + ConfigMap, a PostgreSQL StatefulSet with a dynamically provisioned PVC, notes that survive a Pod deletion. |
 | [Lab 09 — Operate Pinboard](./labs/lab09.md) | 09 | metrics-server, HPA under load, three break/fix drills with `kubectl debug`, a PDB and a node drain, Pod Security Admission. |
 | [Lab 10 — Capstone](./labs/lab10.md) | 10 | Deploy the whole stack into `pinboard-prod` from a blank folder against the [checklist](./labs/capstone/CHECKLIST.md); [`verify.sh`](./labs/capstone/verify.sh) grades it. |
+
+**Helpers.** [`labs/extras/`](./labs/extras/) holds the files the labs point you to:
+[`build-all.sh`](./labs/extras/build-all.sh) rebuilds every Pinboard image if you lose them
+(`bash ~/docker-kubernetes-training/labs/extras/build-all.sh`), and `lab07/` has the stretch-goal
+examples.
 
 ## The sample app — Pinboard
 

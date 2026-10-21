@@ -61,7 +61,7 @@ pinboard-web   1.0          2b3c4d5e6f70   1 hour ago     58.4MB
 ```
 
 Missing? Rebuild them with
-`bash ~/docker-kubernetes-training/labs/solutions/lab02/build-all.sh` before going on.
+`bash ~/docker-kubernetes-training/labs/extras/build-all.sh` before going on.
 
 ### Step 02: Create the network and the volume, run the database
 
@@ -342,7 +342,7 @@ the data. Same image, same path — the only change is who named the storage.
 Five `-e` flags is already a lot to retype, and the password is in your shell history.
 Put the configuration in a file instead.
 
-Create `~/pinboard-labs/lab03/pinboard.env` (also in `labs/solutions/lab03/pinboard.env`):
+Create `~/pinboard-labs/lab03/pinboard.env`:
 
 ```text
 # Pinboard API configuration — passed with `docker run --env-file pinboard.env`.

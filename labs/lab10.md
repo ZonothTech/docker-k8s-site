@@ -37,7 +37,7 @@
 
 > **Continuity.** Nine labs built Pinboard piece by piece in the `pinboard`
 > namespace, each step adding one idea. This is the exam: the same application,
-> the same cluster, a **new namespace**, and no copy-paste from the solutions.
+> the same cluster, a **new namespace**, and no copy-paste.
 > Leave the `pinboard` namespace running — it is your reference implementation and
 > you are allowed to read your own Lab 08/09 files. You are *not* meant to copy
 > them wholesale: type the manifests, and use `kubectl explain` when you are unsure
@@ -84,8 +84,7 @@ Rules:
 2. **`kubectl apply -f .` must work from scratch.** Number your files so the order
    is sane: namespace and config first, workloads after.
 3. **Three references are open book:** `kubectl explain`, the Kubernetes docs, and
-   your own Lab 08 / Lab 09 folders. The `labs/solutions/` folder is closed until
-   you have a scorecard.
+   your own Lab 08 / Lab 09 folders.
 4. **The scorecard is the definition of done:**
    `bash ~/docker-kubernetes-training/labs/capstone/verify.sh pinboard-prod`.
 
@@ -475,13 +474,6 @@ kubectl -n pinboard-prod logs <name> [--previous]
 kubectl -n pinboard-prod get events --sort-by=.lastTimestamp | tail -20
 ```
 
-Only once you have a score should you compare with the reference solution:
-
-```bash
-diff -u ~/pinboard-labs/lab10/20-api-deployment.yaml \
-        ~/docker-kubernetes-training/labs/solutions/lab10/20-api-deployment.yaml
-```
-
 <details>
 <summary><strong>Check yourself:</strong> the scorecard is green, but is this really "production"?</summary>
 
@@ -535,10 +527,6 @@ kubectl apply -k overlays/dev
 > `kubectl apply -k .` instead of `kubectl apply -f .` — `-f .` would also send
 > `kustomization.yaml` to the API server, which rejects it (`no matches for kind
 > "Kustomization"`).
-
-The reference implementation is in
-`~/docker-kubernetes-training/labs/solutions/lab10/` (`kustomization.yaml`,
-`overlays/dev`, `overlays/prod`).
 
 > **Warning.** Do not add a `commonLabels`/`labels` transformer that touches
 > selectors on top of manifests you have already applied: `spec.selector` is

@@ -801,8 +801,8 @@ kubectl config get-contexts
   80/443 mapped to your laptop for Lab 07.
 - All four Pinboard images loaded onto every node — no registry involved.
 - A `pinboard` namespace that is the default for your kubectl context.
-- `pod.yaml`, `pod-broken.yaml` and `pod-sidecar.yaml` in `~/pinboard-labs/lab05/`
-  (solutions in `labs/solutions/lab05/`), and the reflexes for `get` → `describe` →
+- `pod.yaml`, `pod-broken.yaml` and `pod-sidecar.yaml` in `~/pinboard-labs/lab05/`,
+  and the reflexes for `get` → `describe` →
   `logs` → `events`.
 
 **Kept for the next lab:** the cluster, the namespace and the loaded images. **Deleted:**

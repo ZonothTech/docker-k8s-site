@@ -25,7 +25,7 @@ FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="pinboard-api" \
       org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.source="https://github.com/zonoth/docker-kubernetes-training" \
+      org.opencontainers.image.source="https://github.com/ZonothTech/docker-k8s-site" \
       org.opencontainers.image.description="Pinboard API — Containers & Kubernetes course sample"
 
 ENV PORT=8080 APP_VERSION=${APP_VERSION}
