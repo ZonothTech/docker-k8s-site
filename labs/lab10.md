@@ -489,7 +489,8 @@ floor most real workloads never reach.
 
 ## Stretch goals
 
-Pick whichever is most useful to you; each is self-contained.
+> **Optional — only after your scorecard is green.** Pick whichever is most useful to you;
+> each is self-contained and none of them changes your score.
 
 ### 1. Kustomize: one base, two environments
 

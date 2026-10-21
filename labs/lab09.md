@@ -859,6 +859,10 @@ kubectl delete pod root-test --ignore-not-found
 
 ## Stretch goal
 
+> **Optional — but the best use of spare time.** Lab 10 does not require these exercises,
+> but the capstone asks you to write exactly these pieces from scratch (a `restricted`-compliant
+> `securityContext`, a quota and a LimitRange) — this is the rehearsal.
+
 **1. Make the load generator `restricted`-compliant** and re-run Step 04 under
 enforcement. Add to the Pod spec of `90-load-generator.yaml`:
 

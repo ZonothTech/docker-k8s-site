@@ -739,6 +739,10 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
 
 ## Stretch goal
 
+> **Optional — only if you finish early.** Nothing in Lab 08 depends on these exercises,
+> so skip them freely. If you do one, follow its clean-up so the next lab starts from
+> the expected state.
+
 1. **Host-based routing.** `*.localtest.me` resolves to `127.0.0.1` in public DNS, so you
    can use a real host name with no `/etc/hosts` edit. Create `ingress-host.yaml`
    with `host: pinboard.localtest.me` (a ready-made copy is in

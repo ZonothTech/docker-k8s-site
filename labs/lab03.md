@@ -652,6 +652,10 @@ docker rm -f pinboard-web-dev
 
 ## Stretch goal
 
+> **Optional — only if you finish early.** Nothing in Lab 04 depends on these exercises,
+> so skip them freely. If you do one, follow its clean-up so the next lab starts from
+> the expected state.
+
 1. **Back up the volume with a throwaway container.** The classic pattern — mount the
    volume *and* a host folder into a temporary container and tar one into the other:
 

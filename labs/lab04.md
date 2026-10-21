@@ -670,6 +670,10 @@ it created. Keep it, and keep your images: Lab 05 loads them into Kubernetes.
 
 ## Stretch goal
 
+> **Optional — only if you finish early.** Nothing in Lab 05 depends on these exercises,
+> so skip them freely. If you do one, follow its clean-up so the next lab starts from
+> the expected state.
+
 1. **Prove the ordering guarantee.** Temporarily break the database health check: in
    `compose.yaml` set the `db` healthcheck to `test: ["CMD", "false"]` and `retries: 3`,
    then run `docker compose up -d --wait`. After ~15 s `--wait` fails with

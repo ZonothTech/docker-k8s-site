@@ -570,39 +570,113 @@ Build Cache     0         0         0B        0B
 
 ## Stretch goal
 
-Stretch goals 2 and 3 need a running `pinboard-db`: start it again with the Step 02
-command first. When you are done, remove it (`docker rm -f pinboard-db`) and repeat the
-Step 09 clean-up so you end the lab with no containers and no volumes.
+> **Optional — only if you finish early.** Nothing in Lab 02 depends on these exercises,
+> so skip them freely. Each one is a preview of something a later session builds on.
 
-1. **Let the image create the table for you.** Postgres runs any `*.sql` in
-   `/docker-entrypoint-initdb.d/` on **first** start. Try it with a bind mount:
+Start from a clean state: no `pinboard-db` running (Step 09 removed it). Each exercise
+cleans up after itself.
 
-   ```bash
-   docker run -d --name db-init \
-     -e POSTGRES_USER=pinboard -e POSTGRES_PASSWORD=pinboard-secret -e POSTGRES_DB=pinboard \
-     -v ~/docker-kubernetes-training/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro \
-     postgres:17-alpine
-   sleep 5
-   docker exec db-init psql -U pinboard -d pinboard -c 'SELECT text, author FROM notes;'
-   docker rm -f db-init
-   ```
+**1. Let the image create the table — and see that it only happens once.**
+*Why:* in Step 04 you created the table by hand. The Postgres image can do it for you:
+it runs any `*.sql` file placed in `/docker-entrypoint-initdb.d/` — but **only the very
+first time**, when its data folder is empty. People change that script, restart the
+database and wonder why nothing happened; here you see why. (The `-v db-init-data:…`
+part is a *named volume* — a data folder that outlives the container. Lab 03 explains
+it properly; here it lets the second start find the data of the first.)
 
-   Then re-run it against an *existing* data directory and confirm the script is
-   **not** executed a second time — a classic production surprise.
+```bash
+docker run -d --name db-init \
+  -e POSTGRES_USER=pinboard -e POSTGRES_PASSWORD=pinboard-secret -e POSTGRES_DB=pinboard \
+  -v db-init-data:/var/lib/postgresql/data \
+  -v ~/docker-kubernetes-training/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro \
+  postgres:17-alpine
+until docker exec db-init pg_isready -h 127.0.0.1 -U pinboard -q; do sleep 1; done
+docker exec db-init psql -U pinboard -d pinboard -c 'SELECT text, author FROM notes;'
+docker logs db-init 2>&1 | grep -E 'docker-entrypoint-initdb.d|Skipping initialization'
+```
 
-2. **Wait properly instead of `sleep 5`.** The image ships `pg_isready`:
+```text
+          text          |  author
+------------------------+----------
+ Hello from init.sql 👋 | postgres
+(1 row)
 
-   ```bash
-   until docker exec pinboard-db pg_isready -U pinboard -d pinboard -q; do sleep 1; done
-   ```
+/usr/local/bin/docker-entrypoint.sh: running /docker-entrypoint-initdb.d/init.sql
+```
 
-   This is the same idea as a container **health check** (Lab 03) and a Kubernetes
-   **readiness probe** (Session 06).
+The table exists and has one note — you never typed `CREATE TABLE`. Now remove the
+container and start a new one with **exactly the same `docker run` command** (same
+named volume, so the data folder is no longer empty), then repeat the last three lines:
 
-3. **Watch resources live.** With the database running, run `docker stats` in a
-   second terminal while you insert a few thousand rows with
-   `INSERT INTO notes (text) SELECT 'note ' || g FROM generate_series(1,5000) g;`.
-   Note the memory number — Lab 03 puts a limit on it.
+```bash
+docker rm -f db-init
+# … the same docker run command as above, then:
+until docker exec db-init pg_isready -h 127.0.0.1 -U pinboard -q; do sleep 1; done
+docker exec db-init psql -U pinboard -d pinboard -c 'SELECT count(*) FROM notes;'
+docker logs db-init 2>&1 | grep -E 'docker-entrypoint-initdb.d|Skipping initialization'
+```
+
+```text
+ count
+-------
+     1
+(1 row)
+
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+```
+
+Still **one** note, and the log says it skipped the script: it only ever runs on an
+empty data folder. Clean up:
+
+```bash
+docker rm -f db-init
+docker volume rm db-init-data
+```
+
+**2. Wait properly instead of `sleep 5`.**
+*Why:* the lab uses `sleep 5` and hopes the database is up by then — too short on a slow
+machine, wasted time on a fast one. Better to *ask* the database. The image ships
+`pg_isready` for exactly that (you already used it in exercise 1):
+
+```bash
+docker run -d --name pinboard-db \
+  -e POSTGRES_USER=pinboard -e POSTGRES_PASSWORD=pinboard-secret -e POSTGRES_DB=pinboard \
+  postgres:17-alpine
+until docker exec pinboard-db pg_isready -h 127.0.0.1 -U pinboard -q; do echo waiting; sleep 1; done
+echo "database is ready"
+```
+
+`-h 127.0.0.1` matters: during its first start the image runs a temporary server that
+only answers on a local socket, so without it `pg_isready` can say "ready" too early.
+This "ask, don't guess" idea comes back as a container **health check** (Lab 03) and a
+Kubernetes **readiness probe** (Session 06). Keep `pinboard-db` for exercise 3.
+
+**3. Watch resources live.**
+*Why:* a container has no memory limit unless you set one — it may use the whole
+machine. Watch how much it really uses. Open a **second terminal** (on a lab VM: a
+second `ssh` session) and run:
+
+```bash
+docker stats pinboard-db
+```
+
+Back in the first terminal, create the table from the repo's script (`-i` feeds the
+file to `psql` through standard input) and add 5000 rows:
+
+```bash
+docker exec -i pinboard-db psql -U pinboard -d pinboard < ~/docker-kubernetes-training/src/db/init.sql
+docker exec pinboard-db psql -U pinboard -d pinboard \
+  -c "INSERT INTO notes (text) SELECT 'note ' || g FROM generate_series(1,5000) g;"
+```
+
+Watch `MEM USAGE / LIMIT` move in the second terminal: the limit is the size of the
+whole machine. Lab 03 puts a real limit on it. Stop `docker stats` with `Ctrl+C`, then
+clean up so you end the lab with no containers and no volumes:
+
+```bash
+docker rm -f pinboard-db
+docker volume prune -f
+```
 
 ## Conclusion
 

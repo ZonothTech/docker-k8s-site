@@ -775,6 +775,10 @@ kubectl config get-contexts
 
 ## Stretch goal
 
+> **Optional — only if you finish early.** Nothing in Lab 06 depends on these exercises,
+> so skip them freely. If you do one, follow its clean-up so the next lab starts from
+> the expected state.
+
 1. **Debug a distroless container.** Recreate the Pod (`kubectl apply -f pod.yaml`) and
    attach an ephemeral container that shares its process namespace:
 

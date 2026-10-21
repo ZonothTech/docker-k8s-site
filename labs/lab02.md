@@ -654,6 +654,10 @@ argument for small base images, in one screen.
 
 ## Stretch goal
 
+> **Optional — only if you finish early.** Nothing in Lab 03 depends on these exercises,
+> so skip them freely. If you do one, follow its clean-up so the next lab starts from
+> the expected state.
+
 1. **Stop at a stage.** `docker build --target build -t pinboard-api:builder .`
    builds only the first stage. Run `docker run --rm -it pinboard-api:builder sh`
    and look at `/out/pinboard-api` and the Go toolchain that never ships. Handy in

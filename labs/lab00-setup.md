@@ -458,6 +458,9 @@ the images you build as root are invisible to your user later — don't mix the 
 
 ## Stretch goal
 
+> **Optional — only if you finish early.** Lab 01 does not depend on any of this. On a
+> course lab VM, shell completion and the image cache are already set up for you.
+
 - **Shell completion.** Add it once and enjoy it for ten sessions:
 
   ```bash

@@ -792,6 +792,10 @@ replicaset.apps/pinboard-api-7c9b6d4f85   0         0         0       38m
 
 ## Stretch goal
 
+> **Optional — only if you finish early.** Nothing in Lab 07 depends on these exercises,
+> so skip them freely. If you do one, follow its clean-up so the next lab starts from
+> the expected state.
+
 1. **Prove `Recreate` is different.** Copy the Deployment to `20-api-deployment-recreate.yaml`
    with `strategy: {type: Recreate}` (delete the `rollingUpdate:` block), apply it, then
    change the image and watch `kubectl get pods -w`: every Pod is terminated *before* the

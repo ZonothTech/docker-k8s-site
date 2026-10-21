@@ -903,6 +903,10 @@ kubectl rollout restart deployment/pinboard-api
 
 ## Stretch goal
 
+> **Optional — only if you finish early.** Nothing in Lab 09 depends on these exercises,
+> so skip them freely. If you do one, follow its clean-up so the next lab starts from
+> the expected state.
+
 1. **`emptyDir` is Pod-scoped, not container-scoped.** Run a Pod with two
    containers sharing an `emptyDir`, write from one, read from the other, then
    `kubectl delete pod` and confirm the data is gone:
