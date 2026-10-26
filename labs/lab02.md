@@ -201,14 +201,12 @@ WORKDIR /src
 
 # 1. Download dependencies first so this layer is cached until go.mod changes.
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN go mod download
 
 # 2. Now copy the source; a code change only invalidates from here on.
 COPY . .
 ARG APP_VERSION=dev
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath \
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
       -ldflags="-s -w -X main.defaultVersion=${APP_VERSION}" \
       -o /out/pinboard-api .
 
@@ -231,17 +229,16 @@ Read it block by block — every line is there for a reason:
 
 | Block | What it does | Why it matters |
 |---|---|---|
-| `# syntax=docker/dockerfile:1` | Pins the Dockerfile frontend; enables `RUN --mount` and friends | Without it, `--mount=type=cache` is a syntax error |
+| `# syntax=docker/dockerfile:1` | Pins the Dockerfile syntax version | The file builds the same way on any recent Docker, whatever its built-in default |
 | `FROM golang:1.25-alpine AS build` | First stage, **named** `build` | Named stages can be targeted (`--target build`) and copied from |
 | `COPY go.mod go.sum ./` then `RUN go mod download` | Dependencies are their own layer | Editing `main.go` does **not** re-download modules — the single biggest build-time win |
 | `COPY . .` **after** the dependency layer | Source comes last | Cache invalidation flows downwards: put what changes often at the bottom |
-| `RUN --mount=type=cache,...` | BuildKit cache mounts for `/go/pkg/mod` and the build cache | Fast rebuilds **without** baking caches into a layer |
 | `ARG APP_VERSION=dev` | A **build-time** variable, set with `--build-arg` | `ARG` exists only during the build; it is *not* in the running container |
 | `-ldflags="-s -w -X main.defaultVersion=${APP_VERSION}"` | Strips debug info and stamps the version into the binary | This is how `1.0` and `1.1` differ from the same source |
 | `FROM gcr.io/distroless/static-debian12:nonroot` | Second stage: the runtime image | No shell, no package manager, no libc gap — ~2 MB of "just enough to run a static binary" |
 | `LABEL org.opencontainers.image.*` | Standard **OCI annotations** | Tooling, registries and scanners read these; free provenance |
 | `ENV PORT=8080 APP_VERSION=${APP_VERSION}` | Runtime defaults, overridable with `-e` | `ENV` *does* persist into the container, unlike `ARG` |
-| `COPY --from=build /out/pinboard-api /pinboard-api` | The only thing that crosses the stage boundary | The toolchain, sources and caches are simply never shipped |
+| `COPY --from=build /out/pinboard-api /pinboard-api` | The only thing that crosses the stage boundary | The toolchain and the sources are simply never shipped |
 | `USER 65532:65532` | Runs as the distroless `nonroot` user (UID 65532) | A container process is a host process; do not make it root. Numeric IDs matter: Kubernetes' `runAsNonRoot` can only verify a *numeric* UID |
 | `ENTRYPOINT ["/pinboard-api"]` | **Exec form** (JSON array) | The binary becomes PID 1 and receives SIGTERM directly — graceful shutdown works. Shell form would put `/bin/sh` in the way (and distroless has no shell at all) |
 
@@ -265,9 +262,9 @@ docker build -t pinboard-api:1.0 --build-arg APP_VERSION=1.0 .
  => => transferring context: 15.98kB                                               0.0s
  => [build 2/6] WORKDIR /src                                                       0.1s
  => [build 3/6] COPY go.mod go.sum ./                                              0.0s
- => [build 4/6] RUN --mount=type=cache,target=/go/pkg/mod go mod download          8.7s
+ => [build 4/6] RUN go mod download                                                1.1s
  => [build 5/6] COPY . .                                                           0.0s
- => [build 6/6] RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,…    28.2s
+ => [build 6/6] RUN CGO_ENABLED=0 GOOS=linux go build -trimpath       -ldflags=…   25.2s
  => [runtime 2/2] COPY --from=build /out/pinboard-api /pinboard-api                0.2s
  => exporting to image                                                             0.4s
  => => writing image sha256:0f7a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70       0.0s
@@ -529,18 +526,17 @@ docker build -t pinboard-api:1.0 --build-arg APP_VERSION=1.0 .
 ```
 
 ```text
-[+] Building 24.8s (16/16) FINISHED                                      docker:default
+[+] Building 27.1s (16/16) FINISHED                                      docker:default
  => CACHED [build 2/6] WORKDIR /src                                                0.0s
  => CACHED [build 3/6] COPY go.mod go.sum ./                                       0.0s
- => CACHED [build 4/6] RUN --mount=type=cache,target=/go/pkg/mod go mod download   0.0s
+ => CACHED [build 4/6] RUN go mod download                                         0.0s
  => [build 5/6] COPY . .                                                           0.0s
- => [build 6/6] RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,…    21.4s
+ => [build 6/6] RUN CGO_ENABLED=0 GOOS=linux go build -trimpath       -ldflags=…   25.9s
  => [runtime 2/2] COPY --from=build /out/pinboard-api /pinboard-api                0.2s
  => => naming to docker.io/library/pinboard-api:1.0                                0.0s
 ```
 
-The dependency download is `CACHED`; only the compile re-ran (and even that was fast,
-thanks to the `--mount=type=cache` build cache). Had you written `COPY . .` before
+The dependency download is `CACHED`; only the compile re-ran. Had you written `COPY . .` before
 `go mod download`, every one-character edit would re-download every module. **That is
 the whole instruction-ordering rule: least-changing first.**
 

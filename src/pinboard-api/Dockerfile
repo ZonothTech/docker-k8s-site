@@ -9,14 +9,12 @@ WORKDIR /src
 
 # 1. Download dependencies first so this layer is cached until go.mod changes.
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN go mod download
 
 # 2. Now copy the source; a code change only invalidates from here on.
 COPY . .
 ARG APP_VERSION=dev
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath \
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
       -ldflags="-s -w -X main.defaultVersion=${APP_VERSION}" \
       -o /out/pinboard-api .
 
