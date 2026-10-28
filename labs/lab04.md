@@ -544,7 +544,7 @@ docker compose build web
 ### Step 09: A `tools` profile for one-off containers
 
 > **Optional** — skip to Step 10 if you are past ~30 minutes; profiles were shown in the
-> session (slide 16, Demo 4) and nothing later depends on this step.
+> session (slide 16) and nothing later depends on this step.
 
 Not every service should start with `up`. `profiles:` marks services as opt-in. Add the
 two below to `compose.yaml` (before the `volumes:` block):
