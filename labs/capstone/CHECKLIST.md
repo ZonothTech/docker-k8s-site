@@ -19,7 +19,7 @@ Apply with `kubectl apply -f .` · score with
 | 7 | same file | PodDisruptionBudget `pinboard-api` | `minAvailable: 2` | 09 |
 | 8 | same file | HorizontalPodAutoscaler `pinboard-api` | `autoscaling/v2`, cpu 50 %, 2–6 | 09 |
 | 9 | `30-web-deployment.yaml` | Deployment + Service `pinboard-web` | `API_URL=http://pinboard-api:8080`, probes, resources, `securityContext`, `emptyDir` for nginx scratch dirs | 07 |
-| 10 | `40-ingress.yaml` | Ingress `pinboard` | `ingressClassName: nginx`, **`host: pinboard.localtest.me`**, `/api` → api, `/` → web | 07 |
+| 10 | `40-ingress.yaml` | Ingress `pinboard` | `ingressClassName: traefik`, **`host: pinboard.localtest.me`**, `/api` → api, `/` → web | 07 |
 | 11 | `60-smoke-job.yaml` | Job `pinboard-smoke` | busybox `wget` to `pinboard-web:8080` and `pinboard-api:8080/readyz`; restricted `securityContext` | 09 |
 
 ## Non-negotiables (every Pod in `pinboard-prod`)
@@ -44,7 +44,7 @@ Apply with `kubectl apply -f .` · score with
 ## Stretch
 
 - [ ] Kustomize `base` + `overlays/dev` (1 replica, no HPA) and `overlays/prod`; `kubectl apply -k`
-- [ ] NetworkPolicy: only web → api → db (and ingress-nginx → api)
+- [ ] NetworkPolicy: only web → api → db (and Traefik → api)
 - [ ] `helm create pinboard`, move the manifests into `templates/`, parametrise in `values.yaml`
 
 ## When you are stuck

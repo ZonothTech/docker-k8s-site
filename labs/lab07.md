@@ -11,7 +11,7 @@
   - [Step 04: Scale the Deployment and watch the EndpointSlice](#step-04-scale-the-deployment-and-watch-the-endpointslice)
   - [Step 05: Deploy the web front end and its Service](#step-05-deploy-the-web-front-end-and-its-service)
   - [Step 06: NodePort, and why it disappoints on kind](#step-06-nodeport-and-why-it-disappoints-on-kind)
-  - [Step 07: Install ingress-nginx](#step-07-install-ingress-nginx)
+  - [Step 07: Install the Traefik Ingress controller](#step-07-install-the-traefik-ingress-controller)
   - [Step 08: One Ingress for the whole app](#step-08-one-ingress-for-the-whole-app)
   - [Step 09: Open Pinboard in the browser](#step-09-open-pinboard-in-the-browser)
   - [Step 10: Leave it running](#step-10-leave-it-running)
@@ -24,15 +24,17 @@
 - Resolve Service names with cluster DNS from a throwaway debug Pod
 - Watch EndpointSlices follow the Deployment as it scales
 - Deploy the web front end pointing at `http://pinboard-api:8080`
-- Understand why NodePort is awkward on kind, install ingress-nginx, and route `/` and
-  `/api` through one Ingress on `http://localhost`
+- Understand why NodePort is awkward on kind, install the Traefik Ingress controller, and
+  route `/` and `/api` through one Ingress on `http://localhost`
 
 ## Pre-requisites
 
 - Have finished [Lab 06](lab06.md)
 - The `pinboard-api` Deployment running with 3 replicas in namespace `pinboard`
 - The kind cluster created from `labs/kind-config.yaml`, i.e. with host ports 80/443 mapped
-- Internet access — the ingress-nginx manifest and its images are pulled from the network
+- The course repository in `~/docker-kubernetes-training` (Lab 00), which holds the
+  Traefik manifest `labs/traefik-kind.yaml`
+- Internet access — the Traefik image is pulled from Docker Hub
 
 ```bash
 kubectl get deploy,pods -l app.kubernetes.io/name=pinboard-api
@@ -522,76 +524,79 @@ Delete it — the Ingress does this job properly:
 kubectl delete svc pinboard-web-np
 ```
 
-### Step 07: Install ingress-nginx
+### Step 07: Install the Traefik Ingress controller
 
-An Ingress object is only data; it does nothing until a controller reads it. Install
-ingress-nginx with its official kind-specific manifest, which sets a `hostPort` and a node
-selector for `ingress-ready=true` — the label `labs/kind-config.yaml` put on the control
-plane:
+An Ingress object is only data; it does nothing until a controller reads it. The course
+uses **Traefik**, a reverse proxy that watches the API for Ingress objects and turns them
+into routes. The course repository has a ready manifest for kind:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+kubectl apply -f ~/docker-kubernetes-training/labs/traefik-kind.yaml
 ```
 
 ```text
-namespace/ingress-nginx created
-serviceaccount/ingress-nginx created
-role.rbac.authorization.k8s.io/ingress-nginx created
-rolebinding.rbac.authorization.k8s.io/ingress-nginx created
-clusterrole.rbac.authorization.k8s.io/ingress-nginx created
-clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx created
-configmap/ingress-nginx-controller created
-service/ingress-nginx-controller created
-service/ingress-nginx-controller-admission created
-deployment.apps/ingress-nginx-controller created
-job.batch/ingress-nginx-admission-create created
-job.batch/ingress-nginx-admission-patch created
-ingressclass.networking.k8s.io/nginx created
-validatingwebhookconfiguration.admission.k8s.io/ingress-nginx-admission created
+namespace/traefik created
+serviceaccount/traefik created
+clusterrole.rbac.authorization.k8s.io/traefik-traefik created
+clusterrolebinding.rbac.authorization.k8s.io/traefik-traefik created
+service/traefik created
+deployment.apps/traefik created
+ingressclass.networking.k8s.io/traefik created
 ```
 
+Seven ordinary objects: a namespace, an identity allowed to read Ingresses, Services and
+EndpointSlices across the cluster (and to write an Ingress's status — the `ADDRESS` you
+will see in a minute), a Service, a Deployment, and an `IngressClass`. No admission
+webhook, no setup Jobs. Wait for the Deployment:
+
 ```bash
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=120s
+kubectl -n traefik rollout status deploy/traefik --timeout=120s
 ```
 
 ```text
-pod/ingress-nginx-controller-7d4b8c6f95-hx2wq condition met
+Waiting for deployment "traefik" rollout to finish: 0 of 1 updated replicas are available...
+deployment "traefik" successfully rolled out
 ```
 
 ```bash
-kubectl get pods,svc -n ingress-nginx
+kubectl get pods,svc -n traefik -o wide
 kubectl get ingressclass
 ```
 
 ```text
-NAME                                           READY   STATUS      RESTARTS   AGE
-pod/ingress-nginx-admission-create-lc9rt       0/1     Completed   0          71s
-pod/ingress-nginx-admission-patch-4zq8n        0/1     Completed   0          71s
-pod/ingress-nginx-controller-7d4b8c6f95-hx2wq  1/1     Running     0          71s
+NAME                          READY   STATUS    RESTARTS   AGE   IP           NODE                     NOMINATED NODE   READINESS GATES
+pod/traefik-6c8b9d7f4-x2lqp   1/1     Running   0          47s   10.244.0.5   pinboard-control-plane   <none>           <none>
 
-NAME                                         TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
-service/ingress-nginx-controller             NodePort       10.96.88.12     <none>        80:32080/TCP,443:31443/TCP   71s
-service/ingress-nginx-controller-admission   ClusterIP      10.96.15.203    <none>        443/TCP                      71s
+NAME              TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)          AGE   SELECTOR
+service/traefik   ClusterIP   10.96.88.12   <none>        80/TCP,443/TCP   47s   app.kubernetes.io/instance=traefik-traefik,app.kubernetes.io/name=traefik
 
-NAME    CONTROLLER             PARAMETERS   AGE
-nginx   k8s.io/ingress-nginx   <none>       71s
+NAME      CONTROLLER                      PARAMETERS   AGE
+traefik   traefik.io/ingress-controller   <none>       47s
 ```
 
-The controller is itself just a Deployment of Pods in a namespace — a reverse proxy that
-watches the API for Ingress objects and rewrites its own nginx config. The two `Completed`
-Pods are Jobs that generated the admission webhook's TLS certificate.
+The controller is itself just a Deployment of Pods in a namespace. Note the `NODE`: the
+manifest pins it to the node labelled `ingress-ready=true` — the control plane, as
+`labs/kind-config.yaml` labelled it — and binds that node's ports 80/443 with `hostPort`.
+Those are exactly the ports `kind-config.yaml` mapped to your laptop, which is the whole
+trick that makes `http://localhost` work.
 
-> **Note.** The kind manifest pins the controller to the control-plane node and binds host
-> ports 80/443 on it. Those are the ports `kind-config.yaml` mapped to your laptop, which
-> is the whole trick that makes `http://localhost` work.
+Nothing routes yet, but the controller already answers:
 
-> **Note.** The ingress-nginx project was retired in March 2026: the manifests stay
-> available, but there are no more releases or security fixes. That is fine for learning
-> Ingress on a laptop; on a real platform you would pick a maintained controller or the
-> Gateway API (see the Stretch goal).
+```bash
+curl -s -w '%{http_code}\n' http://localhost/
+```
+
+```text
+404 page not found
+404
+```
+
+A `404` here is good news: the controller is up and no rule matched. (`000` instead
+means nothing is listening yet — the Pod is not Ready.)
+
+> **Note.** `labs/traefik-kind.yaml` is plain YAML rendered from Traefik's official Helm
+> chart with the values in `labs/traefik-kind-values.yaml`. Read the values file: it is
+> short, and every line says why it is there. Session 10 installs the same thing with Helm.
 
 ### Step 08: One Ingress for the whole app
 
@@ -606,7 +611,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: pinboard
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - http:
         paths:
@@ -626,8 +631,10 @@ spec:
                   name: http
 ```
 
-- `ingressClassName: nginx` picks the controller. With several controllers in a cluster,
-  this is what stops all of them from serving your rules.
+- `ingressClassName: traefik` picks the controller — it is the `NAME` of the IngressClass
+  you just listed. Traefik only serves Ingresses of its own class, and its class is not
+  the cluster default, so an Ingress without this line is ignored. With several
+  controllers in a cluster, this is what stops all of them from serving your rules.
 - No `host:` means "any host header" — good for `localhost`, not something to do in
   production.
 - Longest matching prefix wins, so `/api/info` goes to the API and everything else to the
@@ -640,8 +647,8 @@ kubectl get ingress
 
 ```text
 ingress.networking.k8s.io/pinboard created
-NAME       CLASS   HOSTS   ADDRESS     PORTS   AGE
-pinboard   nginx   *       localhost   80      18s
+NAME       CLASS     HOSTS   ADDRESS     PORTS   AGE
+pinboard   traefik   *       localhost   80      18s
 ```
 
 `ADDRESS` fills in a few seconds after creation, once the controller has accepted the
@@ -655,28 +662,64 @@ curl -si localhost/ | head -5
 ```text
 {"app":"pinboard-api","greeting":"Welcome to Pinboard","hostname":"pinboard-api-6d5b8c94f7-tzr6c","store":"memory","theme":"amber","uptime":"44m","version":"1.1"}
 HTTP/1.1 200 OK
-Date: Mon, 04 May 2026 12:31:08 GMT
-Content-Type: text/html
+Accept-Ranges: bytes
 Content-Length: 992
-Connection: keep-alive
+Content-Type: text/html
+Date: Mon, 04 May 2026 12:31:08 GMT
 ```
 
-Port 80 on your laptop → the kind control-plane container → the ingress-nginx Pod → the
-`pinboard-web` or `pinboard-api` Service → a Pod. Confirm the routing decision in the
-controller's own log:
+Port 80 on your laptop → the kind control-plane container → the Traefik Pod → the
+`pinboard-web` or `pinboard-api` Service's endpoints → a Pod. Confirm the routing decision
+in the controller's own access log:
 
 ```bash
-kubectl logs -n ingress-nginx deploy/ingress-nginx-controller --tail=2
+kubectl -n traefik logs deploy/traefik --tail=2
 ```
 
 ```text
-172.18.0.1 - - [04/May/2026:12:31:08 +0000] "GET /api/info HTTP/1.1" 200 168 "-" "curl/8.5.0" 92 0.002 [pinboard-pinboard-api-http] [] 10.244.1.7:8080 168 0.002 200 3f1c...
-172.18.0.1 - - [04/May/2026:12:31:12 +0000] "GET / HTTP/1.1" 200 992 "-" "curl/8.5.0" 88 0.001 [pinboard-pinboard-web-http] [] 10.244.2.9:8080 992 0.001 200 8b7e...
+172.18.0.1 - - [04/May/2026:12:31:08 +0000] "GET /api/info HTTP/1.1" 200 168 "-" "-" 3 "pinboard-pinboard-api@kubernetes" "http://10.244.1.7:8080" 2ms
+172.18.0.1 - - [04/May/2026:12:31:12 +0000] "GET / HTTP/1.1" 200 992 "-" "-" 4 "pinboard-pinboard@kubernetes" "http://10.244.2.9:8080" 1ms
 ```
 
-The `[namespace-service-port]` field names the backend it chose, and the Pod IP after it
-is the endpoint it picked. That log line answers most "why did my request go there?"
-questions.
+After the status and size come the request count, the **router** — Traefik's name for one
+rule of your Ingress, `<namespace>-<ingress>-<path>` — and the **backend**, the Pod IP it
+picked. That log line answers most "why did my request go there?" questions.
+
+When a rule matches but nothing can serve it, Traefik answers `503`. See it once — scale
+the API to zero, ask, and scale it back:
+
+```bash
+kubectl scale deploy/pinboard-api --replicas=0
+curl -s -w '%{http_code}\n' http://localhost/api/info
+kubectl scale deploy/pinboard-api --replicas=3
+kubectl rollout status deploy/pinboard-api
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost/api/info
+```
+
+```text
+deployment.apps/pinboard-api scaled
+no available server
+503
+deployment.apps/pinboard-api scaled
+deployment "pinboard-api" successfully rolled out
+200
+```
+
+(Still `200` on the first `curl`? The old Pods take a few seconds to terminate — repeat it.)
+
+> **When it does not work**
+>
+> - `000` (connection refused) — the controller is not Ready yet:
+>   `kubectl -n traefik get pods -o wide` must show it `Running` on `pinboard-control-plane`.
+> - `404` for everything, `ADDRESS` empty — wrong or missing `ingressClassName` (it must
+>   be `traefik`); the controller ignores Ingresses of other classes.
+> - `503` — a rule matched, but the Service has no ready Pods. Check
+>   `kubectl get endpointslices` and the Pods' readiness.
+> - Requests land on the wrong backend — a mistyped Service name does *not* give an error
+>   page: Traefik drops that rule and logs `Cannot create service error="service not found"`,
+>   so the request falls through to `/`. Read `kubectl -n traefik logs deploy/traefik`.
+> - The kind cluster would not start because port 80 is in use on your laptop — find the
+>   culprit with `sudo ss -ltnp | grep ':80 '`.
 
 ### Step 09: Open Pinboard in the browser
 
@@ -722,8 +765,8 @@ NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
 service/pinboard-api   ClusterIP   10.96.132.44    <none>        8080/TCP   38m
 service/pinboard-web   ClusterIP   10.96.201.17    <none>        8080/TCP   26m
 
-NAME                                 CLASS   HOSTS   ADDRESS     PORTS   AGE
-ingress.networking.k8s.io/pinboard   nginx   *       localhost   80      7m
+NAME                                 CLASS     HOSTS   ADDRESS     PORTS   AGE
+ingress.networking.k8s.io/pinboard   traefik   *       localhost   80      7m
 
 NAME                                READY   STATUS    RESTARTS   AGE
 pod/pinboard-api-6d5b8c94f7-9wcn4   1/1     Running   0          3m
@@ -734,8 +777,8 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
 ```
 
 > **Warning.** Delete nothing. Lab 08 attaches a real PostgreSQL StatefulSet to this exact
-> setup, and Lab 09 autoscales and breaks it on purpose. The `ingress-nginx` namespace must
-> stay too — reinstalling it costs a few minutes.
+> setup, and Lab 09 autoscales and breaks it on purpose. The `traefik` namespace must
+> stay too — every later lab reaches Pinboard through it.
 
 ## Stretch goal
 
@@ -754,15 +797,25 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
    ```
 
    The first works; the second still hits the host-less `pinboard` Ingress. Delete the
-   original Ingress and repeat to see a `404 Not Found` from the controller's default
-   backend — proof that the host header is part of the routing key. Then put things back
-   with `kubectl delete -f ingress-host.yaml` and `kubectl apply -f 40-ingress.yaml`: the
-   capstone (Lab 10) claims `pinboard.localtest.me` for its own Ingress, and ingress-nginx
-   refuses a second Ingress for the same host and path.
-2. **See the generated nginx config.**
-   `kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- cat /etc/nginx/nginx.conf | grep -A12 'server_name pinboard.localtest.me'`
-   Your Ingress object became an ordinary nginx `server` block. The controller is a
-   translator, nothing more magical than that.
+   original Ingress and repeat to see a `404 Not Found` from the controller (body
+   `404 page not found`: no rule matched) — proof that the host header is part of the
+   routing key. Then put things back with `kubectl delete -f ingress-host.yaml` and
+   `kubectl apply -f 40-ingress.yaml`: the capstone (Lab 10) claims
+   `pinboard.localtest.me` for its own Ingress, and two Ingresses claiming the same host
+   and path are both accepted without an error — one silently wins.
+2. **Where does Traefik's configuration live?** Look at the controller's command line:
+
+   ```bash
+   kubectl -n traefik get deploy traefik -o yaml | grep -- '- --'
+   ```
+
+   A dozen flags: the ports it listens on (`--entryPoints.web.address=:8000/tcp` is what
+   the `hostPort` 80 leads to), `--providers.kubernetesingress` (read Ingress objects),
+   `--accesslog=true`. There is no config file with your routes in it — the routes *are*
+   your Ingress objects, read live from the API. Then match one request to its route:
+   `curl -s localhost/api/info >/dev/null; kubectl -n traefik logs deploy/traefik --tail=1`,
+   and name the router (which Ingress rule matched) and the backend (which Pod served it).
+   The controller is a translator, nothing more magical than that.
 3. **Gateway API (read, do not install).** Ingress is frozen; the Gateway API is its
    successor, with `GatewayClass` / `Gateway` / `HTTPRoute` splitting cluster-operator
    concerns from application-team concerns. The CRDs install with:
@@ -772,9 +825,11 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
    ```
 
    Read `labs/extras/lab07/gateway-httproute.yaml` to see Pinboard's routing expressed
-   as an `HTTPRoute`. **ingress-nginx does not implement the Gateway API**, so nothing in
-   our cluster would serve those objects — a Gateway controller such as Envoy Gateway,
-   Istio or Cilium would be needed. Do not install one during the lab; compare the shapes
+   as an `HTTPRoute`. Traefik *can* implement the Gateway API, but our install leaves that
+   provider **off** — after installing the CRDs, `kubectl get gatewayclass` still says
+   `No resources found`, so nothing in our cluster would serve those objects. A Gateway
+   implementation (Traefik with its Gateway API provider on, Envoy Gateway, Istio, Cilium,
+   a cloud load balancer) would be needed. Do not set one up during the lab; compare the shapes
    instead: `parentRefs` replaces `ingressClassName`, `backendRefs` takes a port number,
    and matching is explicit rather than annotation-driven.
 
@@ -787,7 +842,7 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
 - A `pinboard-web` Deployment (2 replicas) talking to the API by DNS name
   `http://pinboard-api:8080` — the same wiring you did with Compose's service names, now
   done by CoreDNS and kube-proxy.
-- ingress-nginx installed, and an Ingress routing `/api` → API and `/` → web on
+- The Traefik Ingress controller installed, and an Ingress routing `/api` → API and `/` → web on
   `http://localhost`.
 - A folder `~/pinboard-labs/lab07/` that describes the whole application and can be
   applied to an empty cluster with `kubectl apply -f .`:
@@ -800,7 +855,7 @@ pod/pinboard-web-5f9c7b8d64-h4nrx   1/1     Running   0          26m
   | `40-ingress.yaml` | Ingress `pinboard` on <http://localhost> |
 
 **Kept for the next lab:** everything — the cluster, the `pinboard` namespace with both
-Deployments, both Services and the Ingress, plus the `ingress-nginx` namespace.
+Deployments, both Services and the Ingress, plus the `traefik` namespace.
 
 The remaining lie is the data. Every API replica keeps notes in its own memory, so what
 you see depends on which Pod answered, and a rollout wipes the lot. Next:

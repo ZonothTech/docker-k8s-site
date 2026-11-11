@@ -80,7 +80,7 @@ Session 10 is 30 min theory + an 80 min capstone lab.
 | 04 | **Docker Compose** | The Compose Specification, healthchecks & `depends_on`, env files, `up --wait`, `watch`, scaling, overrides — and where Compose stops | [PDF](./decks/session-04.pdf) | [Lab 04](./labs/lab04.md) |
 | 05 | **Kubernetes: architecture, kubectl, Pods** | Control plane & nodes, the API object model, desired state, kubeconfig, namespaces, Pods, init & sidecar containers, requests/limits | [PDF](./decks/session-05.pdf) | [Lab 05](./labs/lab05.md) |
 | 06 | **Workloads, rollouts and probes** | Labels & selectors, ReplicaSets, Deployments, rolling updates & rollbacks, liveness/readiness/startup probes, Jobs & CronJobs | [PDF](./decks/session-06.pdf) | [Lab 06](./labs/lab06.md) |
-| 07 | **Networking: Services, DNS, Ingress** | Pod network model, Service types, EndpointSlices, cluster DNS, Ingress & ingress-nginx, Gateway API, NetworkPolicy | [PDF](./decks/session-07.pdf) | [Lab 07](./labs/lab07.md) |
+| 07 | **Networking: Services, DNS, Ingress** | Pod network model, Service types, EndpointSlices, cluster DNS, Ingress & Traefik, Gateway API, NetworkPolicy | [PDF](./decks/session-07.pdf) | [Lab 07](./labs/lab07.md) |
 | 08 | **Configuration & storage** | ConfigMaps, Secrets (and why base64 isn't encryption), volumes, PV/PVC/StorageClass, StatefulSets, databases on Kubernetes | [PDF](./decks/session-08.pdf) | [Lab 08](./labs/lab08.md) |
 | 09 | **Operating Kubernetes** | A troubleshooting method, `kubectl debug`, metrics-server, HPA v2, PDB, quotas, RBAC basics, securityContext & Pod Security Admission | [PDF](./decks/session-09.pdf) | [Lab 09](./labs/lab09.md) |
 | 10 | **Capstone: ship Pinboard like production** | The production-ready checklist, Helm & Kustomize at a glance, GitOps, managed Kubernetes, what to learn next | [PDF](./decks/session-10.pdf) | [Lab 10](./labs/lab10.md) |
@@ -124,7 +124,7 @@ have), so finish them in order; if you fall behind, catch up before the next ses
 | [Lab 04 — Pinboard in one file](./labs/lab04.md) | 04 | `compose.yaml` with healthchecks and `depends_on`, `.env`, `up --wait`, `watch`, `--scale`. |
 | [Lab 05 — Pinboard meets Kubernetes](./labs/lab05.md) | 05 | Create the kind cluster, load the images, run the API as a Pod imperatively and from YAML, fix a broken Pod. |
 | [Lab 06 — Make Pinboard API resilient](./labs/lab06.md) | 06 | A Deployment with probes and resources; roll 1.0 → 1.1 without errors, roll out a broken image and undo it. |
-| [Lab 07 — Expose Pinboard](./labs/lab07.md) | 07 | ClusterIP Services, DNS from a debug Pod, the web tier, ingress-nginx and an Ingress on <http://localhost>. |
+| [Lab 07 — Expose Pinboard](./labs/lab07.md) | 07 | ClusterIP Services, DNS from a debug Pod, the web tier, the Traefik Ingress controller and an Ingress on <http://localhost>. |
 | [Lab 08 — Give Pinboard a real database](./labs/lab08.md) | 08 | Secret + ConfigMap, a PostgreSQL StatefulSet with a dynamically provisioned PVC, notes that survive a Pod deletion. |
 | [Lab 09 — Operate Pinboard](./labs/lab09.md) | 09 | metrics-server, HPA under load, three break/fix drills with `kubectl debug`, a PDB and a node drain, Pod Security Admission. |
 | [Lab 10 — Capstone](./labs/lab10.md) | 10 | Deploy the whole stack into `pinboard-prod` from a blank folder against the [checklist](./labs/capstone/CHECKLIST.md); [`verify.sh`](./labs/capstone/verify.sh) grades it. |

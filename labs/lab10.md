@@ -29,8 +29,8 @@
 ## Pre-requisites
 
 - Have finished [Lab 09](lab09.md)
-- kind cluster `pinboard` running, ingress-nginx (Lab 07) and metrics-server (Lab 09)
-  installed
+- kind cluster `pinboard` running, the Traefik Ingress controller (Lab 07) and
+  metrics-server (Lab 09) installed
 - Images `pinboard-api:1.1` and `pinboard-web:1.0` already loaded into the cluster
   (`docker exec pinboard-control-plane crictl images | grep pinboard` to confirm)
 - The course repo at `~/docker-kubernetes-training`
@@ -303,9 +303,11 @@ the web.
   needs an `emptyDir`.
 - `*.localtest.me` resolves to `127.0.0.1` from anywhere, so no `/etc/hosts` edit is
   needed. Your Lab 07 Ingress has no host and keeps answering on `http://localhost`;
-  ingress-nginx matches the most specific rule, so the two coexist.
-- Order matters inside a rule only for readability — ingress-nginx sorts paths by
-  length, so `/api` wins over `/` regardless.
+  a rule with a host is more specific than one without, so the two coexist.
+- Keep `ingressClassName: traefik` — the class is not the cluster default, and
+  Traefik ignores an Ingress that does not name it.
+- Order matters inside a rule only for readability — Traefik gives longer rules a
+  higher priority, so `/api` wins over `/` regardless.
 
 **Acceptance.**
 
@@ -316,8 +318,8 @@ curl -s -o /dev/null -w '%{http_code}\n' http://pinboard.localtest.me/
 ```
 
 ```text
-NAME       CLASS   HOSTS                   ADDRESS     PORTS   AGE
-pinboard   nginx   pinboard.localtest.me   localhost   80      24s
+NAME       CLASS     HOSTS                   ADDRESS     PORTS   AGE
+pinboard   traefik   pinboard.localtest.me   localhost   80      24s
 
 {"app":"pinboard-api","greeting":"Pinboard — production","hostname":"pinboard-api-7d5c9b6f84-6bkzt","store":"postgres","theme":"sky","uptime":"4m2s","version":"1.1"}
 200
@@ -541,8 +543,8 @@ By default every Pod in the cluster can reach every other Pod. Write
 - Pods labelled `app.kubernetes.io/name: pinboard-db` accept ingress on 5432 **only**
   from Pods labelled `app.kubernetes.io/name: pinboard-api`.
 - Pods labelled `app.kubernetes.io/name: pinboard-api` accept ingress on 8080 only
-  from `pinboard-web`, from the smoke Job, and from the `ingress-nginx` namespace
-  (`namespaceSelector` on `kubernetes.io/metadata.name`).
+  from `pinboard-web`, from the smoke Job, and from the `traefik` namespace, where the
+  Ingress controller runs (`namespaceSelector` on `kubernetes.io/metadata.name`).
 
 Test it by trying to reach the database from a Pod that is not the API:
 
@@ -581,8 +583,9 @@ carry the `pinboard-prod` Namespace or hard-coded `namespace:` fields (and
 Now parametrise: replace the image tag with `{{ .Values.api.image.tag }}`, the
 replica counts with `{{ .Values.api.replicas }}`, the greeting/theme with values,
 and the Ingress host with `{{ .Values.ingress.host }}` — add each of these keys to
-`values.yaml`. The release needs its own host, because ingress-nginx refuses a second
-Ingress for the same host and path. Then:
+`values.yaml`. The release needs its own host: Traefik accepts a second Ingress for
+the same host and path without any error, and one of the two then silently gets all
+the traffic. Then:
 
 ```bash
 helm template pinboard ./pinboard-chart --set api.image.tag=1.0 | grep image:

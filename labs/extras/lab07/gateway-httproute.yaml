@@ -4,11 +4,12 @@
 # must be installed first:
 #   kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
 #
-# ingress-nginx does NOT implement the Gateway API. Creating these objects on
-# our cluster is accepted by the API server, but no controller picks them up:
-# the Gateway stays PROGRAMMED=Unknown/False and nothing is routed. A Gateway
-# controller such as Envoy Gateway, Istio or Cilium would be needed — do not
-# install one during the lab.
+# Traefik can implement the Gateway API, but the course install leaves its
+# Gateway API provider OFF (`kubectl get gatewayclass` → No resources found).
+# Creating these objects on our cluster is accepted by the API server, but no
+# controller picks them up: the Gateway stays PROGRAMMED=Unknown/False and
+# nothing is routed. A Gateway controller (Traefik with the provider on, Envoy
+# Gateway, Istio, Cilium) would be needed — do not set one up during the lab.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:

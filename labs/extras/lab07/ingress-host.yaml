@@ -9,7 +9,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: pinboard
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: pinboard.localtest.me
       http:

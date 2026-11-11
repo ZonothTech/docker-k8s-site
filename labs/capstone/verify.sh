@@ -204,7 +204,7 @@ if command -v curl >/dev/null 2>&1; then
   BODY="$(curl -fsS --max-time 10 -H "Host: ${INGRESS_HOST}" "$INGRESS_URL" 2>/dev/null)"
   if [ -z "$BODY" ]; then
     fail "GET ${INGRESS_URL} through the ingress" \
-      "is ingress-nginx running? kubectl -n ingress-nginx get pods"
+      "is Traefik running? kubectl -n traefik get pods"
     fail "API reports store=postgres" "fix the ingress first"
   else
     pass "GET ${INGRESS_URL} through the ingress"

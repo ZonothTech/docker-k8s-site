@@ -167,8 +167,8 @@ NAME                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
 service/pinboard-api   ClusterIP   10.96.148.203   <none>        8080/TCP   41m
 service/pinboard-web   ClusterIP   10.96.62.17     <none>        8080/TCP   22m
 
-NAME                                 CLASS   HOSTS   ADDRESS     PORTS   AGE
-ingress.networking.k8s.io/pinboard   nginx   *       localhost   80      19m
+NAME                                 CLASS     HOSTS   ADDRESS     PORTS   AGE
+ingress.networking.k8s.io/pinboard   traefik   *       localhost   80      19m
 ```
 
 ### Step 02: Watch your notes disappear

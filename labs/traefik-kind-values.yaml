@@ -1,0 +1,62 @@
+# Traefik as the course's Ingress controller on kind.
+# Used two ways, so the install in Lab 07 and the Helm release in Session 10 are the same:
+#   Session 10:  helm install traefik traefik/traefik --version 42.3.2 \
+#                  --namespace traefik --create-namespace -f traefik-kind-values.yaml
+#   Lab 07:      kubectl apply -f traefik-kind.yaml   (= `helm template` of the line above)
+#
+# kind-config.yaml publishes ports 80/443 of the control-plane node on the host and
+# labels that node ingress-ready=true. These values pin Traefik there and bind the
+# node's ports 80/443 with hostPort, so the Ingress answers on http://localhost.
+
+# Bind the node's 80/443 — reached from the host through kind's extraPortMappings.
+ports:
+  web:
+    hostPort: 80
+  websecure:
+    hostPort: 443
+
+# Run on the node that owns the published ports (the control-plane, which is tainted).
+nodeSelector:
+  ingress-ready: "true"
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+# A hostPort can be bound by one Pod per node: replace the Pod, do not surge.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 0
+
+# kind has no cloud load balancer; traffic arrives through the hostPort.
+service:
+  spec:
+    type: ClusterIP
+
+# Ingresses must name the class explicitly: ingressClassName: traefik
+ingressClass:
+  enabled: true
+  isDefaultClass: false
+
+providers:
+  # The course uses the standard Ingress API only — no Traefik CRDs (IngressRoute & co.).
+  kubernetesCRD:
+    enabled: false
+  kubernetesIngress:
+    enabled: true
+    allowEmptyServices: true   # a rule whose Service has no ready Pods answers 503
+    publishedService:
+      enabled: false
+    ingressEndpoint:
+      hostname: localhost      # what `kubectl get ingress` shows in ADDRESS
+
+# One line per request in `kubectl -n traefik logs deploy/traefik`: status, router, backend.
+accessLog:
+  enabled: true
+
+# The dashboard route is an IngressRoute (a Traefik CRD): not used here.
+ingressRoute:
+  dashboard:
+    enabled: false
